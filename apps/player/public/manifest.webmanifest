@@ -1,0 +1,11 @@
+{
+  "name": "AuriKat — Mi Compañero Diario",
+  "short_name": "AuriKat",
+  "description": "Compañero interactivo de crecimiento diario y juegos tranquilos sin palabras.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#EEF3EE",
+  "theme_color": "#527E72",
+  "orientation": "any",
+  "icons": []
+}

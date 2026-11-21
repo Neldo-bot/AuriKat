@@ -1,0 +1,595 @@
+import {
+  buildStrokeRecord,
+  PROTOCOL_VERSION,
+  type PointerSample,
+  type RawSessionPayload,
+  type StrokeRecord,
+  type TrialRecord,
+} from '@aurikat/core-engine';
+
+function makeSyntheticStroke(
+  trialIndex: number,
+  jitterPx: number,
+  seed: number,
+  guideShape: StrokeRecord['guideShape'] = 'line_h',
+): StrokeRecord {
+  const startPoint = { x: 70, y: 150 };
+  const targetPoint = { x: 430, y: guideShape === 'line_diag' ? 95 : 150 };
+  const samples: PointerSample[] = [];
+  const count = 42;
+  for (let i = 0; i < count; i++) {
+    const u = i / (count - 1);
+    // Smooth bell-shaped minimum-jerk progression plus controlled wobble
+    const ease = 10 * u ** 3 - 15 * u ** 4 + 6 * u ** 5;
+    const arcY = guideShape === 'arc_up' ? -55 * Math.sin(Math.PI * u) : 0;
+    const wobble = jitterPx * Math.sin((i + seed) * 1.45) * Math.sin(Math.PI * u);
+    const x = startPoint.x + (targetPoint.x - startPoint.x) * ease + wobble * 0.45;
+    const y = startPoint.y + (targetPoint.y - startPoint.y) * ease + arcY + wobble;
+    samples.push({
+      x,
+      y,
+      t: 1000 + i * 16.67,
+      pressure: 0.5, // Realistic iPad touch constant 0.5
+      width: 24,
+      height: 24,
+      pointerType: 'touch',
+      isCoalesced: true,
+    });
+  }
+  return buildStrokeRecord({
+    trialIndex,
+    guideShape,
+    startPoint,
+    targetPoint,
+    canvasWidth: 500,
+    canvasHeight: 300,
+    touchLifts: jitterPx > 14 ? (trialIndex % 2) : 0,
+    initiationLatencyMs: jitterPx > 14 ? 780 + trialIndex * 25 : 420 + trialIndex * 12,
+    samples,
+  });
+}
+
+export interface DemoClinicalCase {
+  id: string;
+  badge: string;
+  title: string;
+  description: string;
+  session: RawSessionPayload;
+}
+
+/**
+ * 3 Realistic Simulated Beta Cases for Immediate Clinical Exploration:
+ * 1) Balanced Neurotypical Profile (VALID)
+ * 2) High Perseveration / Lower Social Contingency / Motor Variability (VALID)
+ * 3) Incomplete / Disengaged Session demonstrating Canvas Dx-inspired INDETERMINATE Gate
+ */
+export function getDemoClinicalCases(): DemoClinicalCase[] {
+  // --- CASE 1: Balanced Typical Profile ---
+  const typicalTrials: TrialRecord[] = [
+    // G1: 6 social, 6 arrow, 4 contingency, 2 micro_ija
+    ...Array.from({ length: 6 }, (_, i): TrialRecord => ({
+      trialId: `c1-g1-s-${i}`,
+      gameId: 'G1_JA',
+      blockType: 'social_cue',
+      trialIndex: i + 1,
+      isPractice: false,
+      startedAtMs: 1000 + i * 2500,
+      rtMs: 690 + i * 22,
+      accuracy: 1,
+      errorCategory: 'none',
+      choiceChannel: (['left', 'center', 'right'] as const)[i % 3],
+      stimulusSide: (['left', 'center', 'right'] as const)[i % 3],
+      sensoryBitmask: 'default',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 6 }, (_, i): TrialRecord => ({
+      trialId: `c1-g1-a-${i}`,
+      gameId: 'G1_JA',
+      blockType: 'arrow_cue',
+      trialIndex: i + 7,
+      isPractice: false,
+      startedAtMs: 17000 + i * 2500,
+      rtMs: 740 + i * 18,
+      accuracy: 1,
+      errorCategory: 'none',
+      choiceChannel: (['right', 'left', 'center'] as const)[i % 3],
+      stimulusSide: (['right', 'left', 'center'] as const)[i % 3],
+      sensoryBitmask: 'default',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 4 }, (_, i): TrialRecord => ({
+      trialId: `c1-g1-c-${i}`,
+      gameId: 'G1_JA',
+      blockType: 'contingency',
+      trialIndex: i + 13,
+      isPractice: false,
+      startedAtMs: 34000 + i * 2500,
+      rtMs: 810 + i * 20,
+      accuracy: 1,
+      errorCategory: 'none',
+      choiceChannel: (['left', 'right', 'center', 'left'] as const)[i],
+      sensoryBitmask: 'default',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 2 }, (_, i): TrialRecord => ({
+      trialId: `c1-g1-ija-${i}`,
+      gameId: 'G1_JA',
+      blockType: 'micro_ija',
+      trialIndex: i + 17,
+      isPractice: false,
+      startedAtMs: 46000 + i * 3500,
+      rtMs: 1450 + i * 180,
+      accuracy: 1,
+      errorCategory: 'none',
+      choiceChannel: 'shared_with_aurikat',
+      sensoryBitmask: 'default',
+      interruptedByVisibility: false,
+    })),
+    // G2 DCCS: 5 pre, 6 post, 24 mixed
+    ...Array.from({ length: 5 }, (_, i): TrialRecord => ({
+      trialId: `c1-g2-pre-${i}`,
+      gameId: 'G2_DCCS',
+      blockType: 'pre_switch',
+      trialIndex: i + 1,
+      isPractice: false,
+      startedAtMs: 55000 + i * 1600,
+      rtMs: 720 + i * 15,
+      accuracy: 1,
+      errorCategory: 'none',
+      sensoryBitmask: 'default',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 6 }, (_, i): TrialRecord => ({
+      trialId: `c1-g2-post-${i}`,
+      gameId: 'G2_DCCS',
+      blockType: 'post_switch',
+      trialIndex: i + 6,
+      isPractice: false,
+      startedAtMs: 65000 + i * 1700,
+      rtMs: 880 + i * 20,
+      accuracy: 1,
+      errorCategory: 'none',
+      sensoryBitmask: 'default',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 24 }, (_, i): TrialRecord => {
+      const isSwitch = i % 4 === 0;
+      const miss = i === 12;
+      return {
+        trialId: `c1-g2-mix-${i}`,
+        gameId: 'G2_DCCS',
+        blockType: isSwitch ? 'mixed_switch' : 'mixed_repeat',
+        trialIndex: i + 12,
+        isPractice: false,
+        startedAtMs: 78000 + i * 1500,
+        rtMs: isSwitch ? 1020 + (i % 3) * 45 : 830 + (i % 3) * 35,
+        accuracy: miss ? 0 : 1,
+        errorCategory: miss ? 'non_systematic' : 'none',
+        sensoryBitmask: 'default',
+        interruptedByVisibility: false,
+      };
+    }),
+    // G3 ToM: 6 social + 2 physical control
+    ...Array.from({ length: 6 }, (_, i): TrialRecord => ({
+      trialId: `c1-g3-s-${i}`,
+      gameId: 'G3_TOM',
+      blockType: i < 4 ? 'emotion_ctx' : 'false_belief',
+      trialIndex: i + 1,
+      isPractice: false,
+      startedAtMs: 120000 + i * 6000,
+      rtMs: 1650 + i * 120,
+      accuracy: i === 5 ? 0 : 1,
+      errorCategory: i === 5 ? 'non_systematic' : 'none',
+      targetEmotion: i === 1 ? 'surprised' : 'happy',
+      chosenEmotion: i === 1 ? 'surprised' : 'happy',
+      sensoryBitmask: 'default',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 2 }, (_, i): TrialRecord => ({
+      trialId: `c1-g3-p-${i}`,
+      gameId: 'G3_TOM',
+      blockType: 'physical_ctrl',
+      trialIndex: i + 7,
+      isPractice: false,
+      startedAtMs: 158000 + i * 5000,
+      rtMs: 1380 + i * 80,
+      accuracy: 1,
+      errorCategory: 'none',
+      sensoryBitmask: 'default',
+      interruptedByVisibility: false,
+    })),
+    // G4A GeoPref: balanced social preference (70% social / 30% geo)
+    ...Array.from({ length: 10 }, (_, i): TrialRecord => ({
+      trialId: `c1-g4a-${i}`,
+      gameId: 'G4A_PREF',
+      blockType: i < 5 ? 'geopref_h1' : 'geopref_h2',
+      trialIndex: i + 1,
+      isPractice: false,
+      startedAtMs: 170000 + i * 2000,
+      rtMs: 920,
+      accuracy: null,
+      errorCategory: 'none',
+      choiceChannel: i < 7 ? 'social' : 'geometric',
+      sensoryBitmask: 'default',
+      interruptedByVisibility: false,
+    })),
+  ];
+
+  const typicalStrokes = Array.from({ length: 8 }, (_, i) =>
+    makeSyntheticStroke(i + 1, 3.2, i * 1.1, i % 2 === 0 ? 'line_h' : 'arc_up'),
+  );
+  typicalStrokes.forEach((st) => {
+    typicalTrials.push({
+      trialId: `c1-g4b-${st.trialIndex}`,
+      gameId: 'G4B_MOTOR',
+      blockType: st.guideShape,
+      trialIndex: st.trialIndex,
+      isPractice: false,
+      startedAtMs: 195000 + st.trialIndex * 3000,
+      rtMs: st.metrics.durationMs,
+      accuracy: 1,
+      errorCategory: 'none',
+      sensoryBitmask: 'default',
+      interruptedByVisibility: false,
+      strokeMetrics: st.metrics,
+    });
+  });
+
+  const case1Session: RawSessionPayload = {
+    schemaVersion: '2.0.0',
+    protocolVersion: PROTOCOL_VERSION,
+    sessionId: 'demo-sess-01-typical',
+    participantPseudoId: 'DEMO-AK-001',
+    ageMonths: 76,
+    sexAssigned: 'F',
+    ageModule: 'm2_4_8',
+    subAgeBand: '6_8',
+    formVariant: 'A',
+    createdAtIsoYear: 2026,
+    exportedAtIso: '2026-11-20T15:00:00.000Z',
+    assent: { shown: true, accepted: true, acceptedAtMs: 1000 },
+    deviceMeta: {
+      pointerType: 'touch',
+      effectiveSamplingHz: 60,
+      coalescedSupported: true,
+      pressureSupported: false,
+      viewportWidthPx: 1024,
+      viewportHeightPx: 768,
+      viewportDiagMm: 338,
+      devicePixelRatio: 2,
+      highResTimeOriginIsolated: false,
+      imuAvailable: false,
+      tabletFlatOnSurface: 'flat',
+      prefersReducedMotion: false,
+    },
+    customization: {
+      species: 'aurikat',
+      archetype: 'criatura_companera',
+      paletteId: 'salvia_calma',
+      accessory: 'au_charm',
+      unlockedAccessories: ['au_charm', 'leaf_hat', 'star_scarf'],
+      unlockedStickers: ['st_star', 'st_leaf', 'st_paw', 'st_cloud'],
+      sharedDaysCount: 6,
+    },
+    sensorySettingsFinal: { muted: false, dimLight: false, motionScale: 1, volume: 0.65 },
+    sensoryAdjustments: [],
+    trials: typicalTrials,
+    strokes: typicalStrokes,
+    rhythmicTapInterIntervalsMs: [510, 820, 410, 990],
+    emaEntries: [
+      { entryId: 'e1', relativeDayIndex: 0, isoDayBucket: '2026-11-15', moodId: 'sun_happy', valenceScore: 2, habits: ['sleep', 'food', 'play_move', 'shared_time'], entryMode: 'caregiver_assisted', durationMs: 14000, calmBreathUsed: false },
+      { entryId: 'e2', relativeDayIndex: 1, isoDayBucket: '2026-11-16', moodId: 'breeze_calm', valenceScore: 1, habits: ['sleep', 'food', 'calm_rest', 'smooth_change'], entryMode: 'caregiver_assisted', durationMs: 13200, calmBreathUsed: false },
+      { entryId: 'e3', relativeDayIndex: 2, isoDayBucket: '2026-11-17', moodId: 'sun_happy', valenceScore: 2, habits: ['sleep', 'food', 'play_move', 'calm_rest', 'shared_time'], entryMode: 'caregiver_assisted', durationMs: 12100, calmBreathUsed: false },
+      { entryId: 'e4', relativeDayIndex: 3, isoDayBucket: '2026-11-18', moodId: 'breeze_calm', valenceScore: 1, habits: ['sleep', 'food', 'play_move'], entryMode: 'caregiver_assisted', durationMs: 15000, calmBreathUsed: false },
+      { entryId: 'e5', relativeDayIndex: 4, isoDayBucket: '2026-11-19', moodId: 'sun_happy', valenceScore: 2, habits: ['sleep', 'food', 'play_move', 'shared_time', 'smooth_change'], entryMode: 'caregiver_assisted', durationMs: 11800, calmBreathUsed: false },
+    ],
+  };
+
+  // --- CASE 2: Priority Observation Profile (Higher Perseveration, Lower RJA/IJA, GeoPref ASDGeo, Motor Variability, Sensory Avoiding) ---
+  const priorityTrials: TrialRecord[] = [
+    ...Array.from({ length: 6 }, (_, i): TrialRecord => ({
+      trialId: `c2-g1-s-${i}`,
+      gameId: 'G1_JA',
+      blockType: 'social_cue',
+      trialIndex: i + 1,
+      isPractice: false,
+      startedAtMs: 1000 + i * 3000,
+      rtMs: 1380 + i * 55,
+      accuracy: i % 2 === 0 ? 0 : 1,
+      errorCategory: i % 2 === 0 ? 'non_systematic' : 'none',
+      choiceChannel: (['left', 'center', 'right'] as const)[(i + 1) % 3],
+      stimulusSide: (['left', 'center', 'right'] as const)[i % 3],
+      sensoryBitmask: 'mute|dim',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 6 }, (_, i): TrialRecord => ({
+      trialId: `c2-g1-a-${i}`,
+      gameId: 'G1_JA',
+      blockType: 'arrow_cue',
+      trialIndex: i + 7,
+      isPractice: false,
+      startedAtMs: 20000 + i * 2400,
+      rtMs: 790 + i * 25,
+      accuracy: 1,
+      errorCategory: 'none',
+      choiceChannel: (['right', 'left', 'center'] as const)[i % 3],
+      stimulusSide: (['right', 'left', 'center'] as const)[i % 3],
+      sensoryBitmask: 'mute|dim',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 4 }, (_, i): TrialRecord => ({
+      trialId: `c2-g1-c-${i}`,
+      gameId: 'G1_JA',
+      blockType: 'contingency',
+      trialIndex: i + 13,
+      isPractice: false,
+      startedAtMs: 36000 + i * 2600,
+      rtMs: 1290,
+      accuracy: i === 0 ? 1 : 0,
+      errorCategory: i === 0 ? 'none' : 'non_systematic',
+      choiceChannel: (['left', 'center', 'right', 'left'] as const)[i],
+      sensoryBitmask: 'mute|dim',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 2 }, (_, i): TrialRecord => ({
+      trialId: `c2-g1-ija-${i}`,
+      gameId: 'G1_JA',
+      blockType: 'micro_ija',
+      trialIndex: i + 17,
+      isPractice: false,
+      startedAtMs: 49000 + i * 3500,
+      rtMs: 2100,
+      accuracy: 0,
+      errorCategory: 'none',
+      choiceChannel: 'object_direct',
+      sensoryBitmask: 'mute|dim',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 5 }, (_, i): TrialRecord => ({
+      trialId: `c2-g2-pre-${i}`,
+      gameId: 'G2_DCCS',
+      blockType: 'pre_switch',
+      trialIndex: i + 1,
+      isPractice: false,
+      startedAtMs: 60000 + i * 1600,
+      rtMs: 840,
+      accuracy: 1,
+      errorCategory: 'none',
+      sensoryBitmask: 'mute|dim',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 6 }, (_, i): TrialRecord => ({
+      trialId: `c2-g2-post-${i}`,
+      gameId: 'G2_DCCS',
+      blockType: 'post_switch',
+      trialIndex: i + 6,
+      isPractice: false,
+      startedAtMs: 70000 + i * 2000,
+      rtMs: 1480,
+      accuracy: i < 3 ? 0 : 1,
+      errorCategory: i < 3 ? 'perseverative' : 'none',
+      sensoryBitmask: 'mute|dim',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 24 }, (_, i): TrialRecord => {
+      const isSwitch = i % 4 === 0;
+      const isRegressive = i === 6 || i === 11 || i === 17 || i === 22;
+      const isPersev = isSwitch && (i === 4 || i === 12);
+      const err = isPersev ? 'perseverative' : isRegressive ? 'regressive' : 'none';
+      return {
+        trialId: `c2-g2-mix-${i}`,
+        gameId: 'G2_DCCS',
+        blockType: isSwitch ? 'mixed_switch' : 'mixed_repeat',
+        trialIndex: i + 12,
+        isPractice: false,
+        startedAtMs: 85000 + i * 1900,
+        rtMs: isSwitch ? 1680 + (i % 3) * 90 : 1090 + (i % 3) * 40,
+        accuracy: err === 'none' ? 1 : 0,
+        errorCategory: err,
+        sensoryBitmask: 'mute|dim',
+        interruptedByVisibility: false,
+      };
+    }),
+    ...Array.from({ length: 6 }, (_, i): TrialRecord => ({
+      trialId: `c2-g3-s-${i}`,
+      gameId: 'G3_TOM',
+      blockType: i < 4 ? 'emotion_ctx' : 'false_belief',
+      trialIndex: i + 1,
+      isPractice: false,
+      startedAtMs: 135000 + i * 6500,
+      rtMs: 2450,
+      accuracy: i === 0 || i === 2 ? 1 : 0,
+      errorCategory: i === 0 || i === 2 ? 'none' : 'non_systematic',
+      targetEmotion: i === 1 ? 'surprised' : 'scared',
+      chosenEmotion: i === 1 ? 'scared' : 'sad',
+      sensoryBitmask: 'mute|dim',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 2 }, (_, i): TrialRecord => ({
+      trialId: `c2-g3-p-${i}`,
+      gameId: 'G3_TOM',
+      blockType: 'physical_ctrl',
+      trialIndex: i + 7,
+      isPractice: false,
+      startedAtMs: 175000 + i * 5000,
+      rtMs: 1310,
+      accuracy: 1,
+      errorCategory: 'none',
+      sensoryBitmask: 'mute|dim',
+      interruptedByVisibility: false,
+    })),
+    ...Array.from({ length: 12 }, (_, i): TrialRecord => ({
+      trialId: `c2-g4a-${i}`,
+      gameId: 'G4A_PREF',
+      blockType: i < 6 ? 'geopref_h1' : 'geopref_h2',
+      trialIndex: i + 1,
+      isPractice: false,
+      startedAtMs: 188000 + i * 2000,
+      rtMs: 780,
+      accuracy: null,
+      errorCategory: 'none',
+      choiceChannel: i < 10 ? 'geometric' : 'social', // 83% geometric -> ASDGeo alert
+      sensoryBitmask: 'mute|dim',
+      interruptedByVisibility: false,
+    })),
+  ];
+
+  const priorityStrokes = Array.from({ length: 8 }, (_, i) =>
+    makeSyntheticStroke(i + 1, 22 + (i % 3) * 14, i * 2.3, i % 2 === 0 ? 'line_diag' : 'arc_up'),
+  );
+  priorityStrokes.forEach((st) => {
+    priorityTrials.push({
+      trialId: `c2-g4b-${st.trialIndex}`,
+      gameId: 'G4B_MOTOR',
+      blockType: st.guideShape,
+      trialIndex: st.trialIndex,
+      isPractice: false,
+      startedAtMs: 215000 + st.trialIndex * 3200,
+      rtMs: st.metrics.durationMs,
+      accuracy: 1,
+      errorCategory: 'none',
+      sensoryBitmask: 'mute|dim',
+      interruptedByVisibility: false,
+      strokeMetrics: st.metrics,
+    });
+  });
+
+  const case2Session: RawSessionPayload = {
+    schemaVersion: '2.0.0',
+    protocolVersion: PROTOCOL_VERSION,
+    sessionId: 'demo-sess-02-priority',
+    participantPseudoId: 'DEMO-AK-002',
+    ageMonths: 66,
+    sexAssigned: 'M',
+    ageModule: 'm2_4_8',
+    subAgeBand: '4_5',
+    formVariant: 'A',
+    createdAtIsoYear: 2026,
+    exportedAtIso: '2026-11-20T18:30:00.000Z',
+    assent: { shown: true, accepted: true, acceptedAtMs: 1200 },
+    deviceMeta: {
+      pointerType: 'touch',
+      effectiveSamplingHz: 60,
+      coalescedSupported: true,
+      pressureSupported: false,
+      viewportWidthPx: 1024,
+      viewportHeightPx: 768,
+      viewportDiagMm: 338,
+      devicePixelRatio: 2,
+      highResTimeOriginIsolated: false,
+      imuAvailable: false,
+      tabletFlatOnSurface: 'flat',
+      prefersReducedMotion: true,
+    },
+    customization: {
+      species: 'nube_ajolote',
+      archetype: 'cozy_pixel',
+      paletteId: 'atardecer_noche',
+      accessory: 'au_charm',
+      unlockedAccessories: ['au_charm', 'cloud_backpack'],
+      unlockedStickers: ['st_star', 'st_moon', 'st_cloud'],
+      sharedDaysCount: 5,
+    },
+    sensorySettingsFinal: { muted: true, dimLight: true, motionScale: 0, volume: 0.25 },
+    sensoryAdjustments: [
+      { timestampMs: 1500, setting: 'muted', previousValue: false, nextValue: true, activeGameId: 'hub' },
+      { timestampMs: 2600, setting: 'dimLight', previousValue: false, nextValue: true, activeGameId: 'hub' },
+      { timestampMs: 3900, setting: 'motionScale', previousValue: 1, nextValue: 0, activeGameId: 'G1_JA' },
+      { timestampMs: 88000, setting: 'pause_opened', previousValue: false, nextValue: true, activeGameId: 'G2_DCCS' },
+    ],
+    trials: priorityTrials,
+    strokes: priorityStrokes,
+    rhythmicTapInterIntervalsMs: [320, 315, 328, 318, 322, 319], // Low CV rhythmic tapping
+    emaEntries: [
+      { entryId: 'p1', relativeDayIndex: 0, isoDayBucket: '2026-11-15', moodId: 'breeze_calm', valenceScore: 1, habits: ['sleep', 'calm_rest'], entryMode: 'caregiver_assisted', durationMs: 17000, calmBreathUsed: false },
+      { entryId: 'p2', relativeDayIndex: 1, isoDayBucket: '2026-11-16', moodId: 'storm_overwhelmed', valenceScore: -2, habits: ['calm_rest'], entryMode: 'caregiver_assisted', durationMs: 19500, calmBreathUsed: true },
+      { entryId: 'p3', relativeDayIndex: 2, isoDayBucket: '2026-11-17', moodId: 'sun_happy', valenceScore: 2, habits: ['sleep', 'food', 'play_move'], entryMode: 'caregiver_assisted', durationMs: 14000, calmBreathUsed: false },
+      { entryId: 'p4', relativeDayIndex: 3, isoDayBucket: '2026-11-18', moodId: 'mist_worried', valenceScore: -1, habits: ['food', 'calm_rest'], entryMode: 'caregiver_assisted', durationMs: 18000, calmBreathUsed: true },
+      { entryId: 'p5', relativeDayIndex: 4, isoDayBucket: '2026-11-19', moodId: 'storm_overwhelmed', valenceScore: -2, habits: ['calm_rest'], entryMode: 'caregiver_assisted', durationMs: 18500, calmBreathUsed: true },
+    ],
+  };
+
+  // --- CASE 3: INDETERMINATE Session (Incomplete / Anticipatory Taps — Canvas Dx Lesson) ---
+  const indetSession: RawSessionPayload = {
+    schemaVersion: '2.0.0',
+    protocolVersion: PROTOCOL_VERSION,
+    sessionId: 'demo-sess-03-indeterminate',
+    participantPseudoId: 'DEMO-AK-003',
+    ageMonths: 54,
+    sexAssigned: 'X',
+    ageModule: 'm2_4_8',
+    subAgeBand: '4_5',
+    formVariant: 'B',
+    createdAtIsoYear: 2026,
+    exportedAtIso: '2026-11-21T09:15:00.000Z',
+    assent: { shown: true, accepted: true, acceptedAtMs: 800 },
+    deviceMeta: {
+      pointerType: 'mouse',
+      effectiveSamplingHz: 32,
+      coalescedSupported: false,
+      pressureSupported: false,
+      viewportWidthPx: 1280,
+      viewportHeightPx: 800,
+      viewportDiagMm: 398,
+      devicePixelRatio: 1,
+      highResTimeOriginIsolated: false,
+      imuAvailable: false,
+      tabletFlatOnSurface: 'unknown',
+      prefersReducedMotion: false,
+    },
+    customization: {
+      species: 'zorro_buho',
+      archetype: 'cuento_pastel',
+      paletteId: 'arena_tibia',
+      accessory: 'au_charm',
+      unlockedAccessories: ['au_charm'],
+      unlockedStickers: ['st_star'],
+      sharedDaysCount: 1,
+    },
+    sensorySettingsFinal: { muted: false, dimLight: false, motionScale: 1, volume: 0.65 },
+    sensoryAdjustments: [],
+    trials: Array.from({ length: 5 }, (_, i): TrialRecord => ({
+      trialId: `c3-g1-${i}`,
+      gameId: 'G1_JA',
+      blockType: 'social_cue',
+      trialIndex: i + 1,
+      isPractice: false,
+      startedAtMs: 1000 + i * 900,
+      rtMs: 95, // Anticipatory < 150 ms
+      accuracy: 0,
+      errorCategory: 'pre_cue_impulsive',
+      choiceChannel: 'left',
+      sensoryBitmask: 'default',
+      interruptedByVisibility: false,
+    })),
+    strokes: [],
+    rhythmicTapInterIntervalsMs: [],
+    emaEntries: [
+      { entryId: 'i1', relativeDayIndex: 0, isoDayBucket: '2026-11-21', moodId: 'cloud_tired_sad', valenceScore: -1, habits: [], entryMode: 'child_solo', durationMs: 6000, calmBreathUsed: false },
+    ],
+  };
+
+  return [
+    {
+      id: 'demo_typical',
+      badge: 'VALID — Perfil Equilibrado',
+      title: 'DEMO-AK-001 (6 años 4 meses)',
+      description: 'Sesión táctil completa con buena orientación social, flexibilidad DCCS fluida, trazos suaves y baja inestabilidad afectiva (MSSD).',
+      session: case1Session,
+    },
+    {
+      id: 'demo_priority',
+      badge: 'VALID — Observación Prioritaria',
+      title: 'DEMO-AK-002 (5 años 6 meses)',
+      description: 'Menor seguimiento de pista social frente a flecha, errores perseverativos y regresivos en DCCS, preferencia geométrica exploratoria, alta variabilidad motora 2D y uso activo de Barra Sensorial.',
+      session: case2Session,
+    },
+    {
+      id: 'demo_indeterminate',
+      badge: 'INDETERMINATE — Bloqueo de Calidad',
+      title: 'DEMO-AK-003 (4 años 6 meses)',
+      description: 'Sesión incompleta (<2 juegos) con mouse y respuestas anticipatorias (<150 ms). Demuestra el estado INDETERMINATE que bloquea puntajes ruidosos.',
+      session: indetSession,
+    },
+  ];
+}

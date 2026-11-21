@@ -1,0 +1,301 @@
+/* AuriKat Clinical Portal — Swiss Editorial Clinical Instrument (Vanilla CSS + A4 Print Precision) */
+
+:root {
+  --cl-bg: #F3F4F0;
+  --cl-surface: #FCFDFB;
+  --cl-surface-alt: #EAECE6;
+  --cl-ink: #1F2925;
+  --cl-ink-muted: #52615A;
+  --cl-border: #D7DDD6;
+  --cl-accent: #325D54;
+  --cl-accent-soft: #DCE9E5;
+  --cl-gold: #A98133;
+  --cl-gold-soft: #F4EBD7;
+  --cl-warn: #944A42;
+  --cl-warn-soft: #F6E5E3;
+  --cl-radius: 16px;
+  --cl-shadow: 0 6px 22px rgba(31, 41, 37, 0.06);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100dvh;
+  background: var(--cl-bg);
+  color: var(--cl-ink);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+}
+
+.cl-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 24px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.cl-header {
+  background: var(--cl-surface);
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius);
+  padding: 16px 22px;
+  box-shadow: var(--cl-shadow);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cl-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cl-brand h1 {
+  margin: 0;
+  font-size: 1.22rem;
+  letter-spacing: -0.01em;
+}
+
+.cl-brand small {
+  color: var(--cl-ink-muted);
+  display: block;
+  font-size: 0.82rem;
+}
+
+.cl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: var(--cl-accent-soft);
+  color: var(--cl-accent);
+}
+
+.cl-badge[data-tone='gold'] {
+  background: var(--cl-gold-soft);
+  color: #7D5E1F;
+}
+
+.cl-badge[data-tone='warn'] {
+  background: var(--cl-warn-soft);
+  color: var(--cl-warn);
+}
+
+.cl-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cl-tab {
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--cl-border);
+  background: var(--cl-surface);
+  color: var(--cl-ink-muted);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.cl-tab[data-active='true'] {
+  background: var(--cl-accent);
+  border-color: var(--cl-accent);
+  color: #FCFDFB;
+}
+
+.cl-card {
+  background: var(--cl-surface);
+  border: 1px solid var(--cl-border);
+  border-radius: var(--cl-radius);
+  padding: 20px 22px;
+  box-shadow: var(--cl-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cl-card h2,
+.cl-card h3 {
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.cl-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.cl-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 860px) {
+  .cl-grid-2,
+  .cl-grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cl-btn {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--cl-border);
+  background: var(--cl-surface);
+  color: var(--cl-ink);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cl-btn:hover {
+  background: var(--cl-surface-alt);
+}
+
+.cl-btn-primary {
+  background: var(--cl-accent);
+  border-color: var(--cl-accent);
+  color: #FCFDFB;
+}
+
+.cl-btn-primary:hover {
+  background: #274B43;
+}
+
+.cl-input {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--cl-border);
+  background: #FFFFFF;
+  color: var(--cl-ink);
+  font-size: 0.92rem;
+  font-family: inherit;
+}
+
+.cl-input:focus {
+  outline: 2px solid var(--cl-accent-soft);
+  border-color: var(--cl-accent);
+}
+
+.cl-mono {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+  font-size: 0.84rem;
+}
+
+.cl-banner {
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 0.88rem;
+  border: 1px solid var(--cl-border);
+  background: var(--cl-surface-alt);
+}
+
+.cl-banner[data-tone='gold'] {
+  background: var(--cl-gold-soft);
+  border-color: #DEC89A;
+  color: #5E4514;
+}
+
+.cl-banner[data-tone='warn'] {
+  background: var(--cl-warn-soft);
+  border-color: #E2B8B3;
+  color: #6E2F29;
+}
+
+.cl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.87rem;
+}
+
+.cl-table th,
+.cl-table td {
+  text-align: left;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--cl-border);
+  vertical-align: top;
+}
+
+.cl-table th {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cl-ink-muted);
+  background: var(--cl-surface-alt);
+}
+
+.cl-metric-box {
+  background: var(--cl-bg);
+  border: 1px solid var(--cl-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.cl-metric-box strong {
+  display: block;
+  font-size: 1.25rem;
+  margin-top: 2px;
+}
+
+.cl-metric-box span {
+  font-size: 0.78rem;
+  color: var(--cl-ink-muted);
+}
+
+/* Immaculate A4 Print Layout (Zero Mid-Table / Mid-Chart Page Splits) */
+@page {
+  size: A4 portrait;
+  margin: 14mm;
+}
+
+@media print {
+  html,
+  body,
+  #root {
+    background: #FFFFFF !important;
+    color: #1A1F1D !important;
+  }
+  .cl-no-print {
+    display: none !important;
+  }
+  .cl-shell {
+    max-width: 100%;
+    padding: 0;
+    gap: 10px;
+  }
+  .cl-card {
+    box-shadow: none;
+    border: 1px solid #C8CFC8;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    padding: 14px;
+  }
+  .cl-print-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

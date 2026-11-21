@@ -1,0 +1,463 @@
+/* AuriKat Player Design System — Vanilla CSS, Sensory-Calm HSL Tokens, Pediatric Ergonomics (GAIA + WCAG 2.2) */
+
+:root {
+  --ak-bg: #EEF3EE;
+  --ak-surface: #F7F9F5;
+  --ak-surface-raised: #E3ECE4;
+  --ak-accent: #527E72;
+  --ak-accent-soft: #D5E5DF;
+  --ak-ink: #2B3330;
+  --ak-ink-muted: #56655F;
+  --ak-au-gold: #C59E49;
+  --ak-shadow-soft: 0 10px 28px rgba(43, 51, 48, 0.08), 0 2px 6px rgba(43, 51, 48, 0.05);
+  --ak-shadow-press: 0 3px 10px rgba(43, 51, 48, 0.09);
+  --ak-radius-lg: 28px;
+  --ak-radius-md: 20px;
+  --ak-radius-pill: 999px;
+  --ak-motion-scale: 1;
+  --ak-bezel-safe: 20px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100dvh;
+  width: 100%;
+  background: var(--ak-bg);
+  color: var(--ak-ink);
+  font-family: ui-rounded, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', 'Quicksand', 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.4;
+  overflow-x: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Tactile warm paper grain texture (avoids flat sterile surfaces without visual noise) */
+.ak-shell {
+  min-height: 100dvh;
+  padding: max(var(--ak-bezel-safe), env(safe-area-inset-top))
+    max(var(--ak-bezel-safe), env(safe-area-inset-right))
+    max(var(--ak-bezel-safe), env(safe-area-inset-bottom))
+    max(var(--ak-bezel-safe), env(safe-area-inset-left));
+  background:
+    radial-gradient(circle at 12% 14%, var(--ak-accent-soft) 0%, transparent 44%),
+    radial-gradient(circle at 88% 82%, var(--ak-surface-raised) 0%, transparent 46%),
+    var(--ak-bg);
+  transition: background-color 320ms ease, filter 320ms ease;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ak-shell[data-dim='true'] {
+  filter: brightness(0.84) saturate(0.88);
+}
+
+.ak-shell[data-motion='0'] *,
+.ak-shell[data-motion='0'] *::before,
+.ak-shell[data-motion='0'] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+/* Top Sensory Calm Bar (GAIA VII Predictability: always fixed in top row) */
+.ak-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.ak-brand-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  background: var(--ak-surface);
+  border-radius: var(--ak-radius-pill);
+  box-shadow: var(--ak-shadow-soft);
+  border: 1px solid rgba(43, 51, 48, 0.06);
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: 0.01em;
+}
+
+.ak-calm-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Pediatric Touch Target Standard (IC-1 / UX-03: >= 64-72 CSS px for primary targets) */
+.ak-icon-btn {
+  min-width: 56px;
+  min-height: 56px;
+  border-radius: var(--ak-radius-pill);
+  border: 2px solid transparent;
+  background: var(--ak-surface);
+  color: var(--ak-ink);
+  box-shadow: var(--ak-shadow-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 160ms cubic-bezier(0.34, 1.56, 0.64, 1), background-color 180ms ease;
+  position: relative;
+}
+
+.ak-icon-btn[data-active='true'] {
+  background: var(--ak-accent);
+  color: var(--ak-surface);
+}
+
+.ak-icon-btn:active {
+  transform: scale(0.93);
+  box-shadow: var(--ak-shadow-press);
+}
+
+.ak-primary-target {
+  min-width: 72px;
+  min-height: 72px;
+  padding: 14px 20px;
+  border-radius: var(--ak-radius-md);
+  border: 2px solid rgba(43, 51, 48, 0.08);
+  background: var(--ak-surface);
+  color: var(--ak-ink);
+  box-shadow: var(--ak-shadow-soft);
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.96rem;
+  transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.ak-primary-target:hover {
+  transform: translateY(-2px);
+}
+
+.ak-primary-target:active {
+  transform: scale(0.95);
+  box-shadow: var(--ak-shadow-press);
+}
+
+.ak-primary-target[data-selected='true'] {
+  background: var(--ak-accent-soft);
+  border-color: var(--ak-accent);
+}
+
+.ak-btn-accent {
+  min-height: 64px;
+  min-width: 72px;
+  padding: 14px 28px;
+  border-radius: var(--ak-radius-pill);
+  border: none;
+  background: var(--ak-accent);
+  color: #F7F9F5;
+  font-weight: 800;
+  font-size: 1.05rem;
+  box-shadow: var(--ak-shadow-soft);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 180ms ease;
+}
+
+.ak-btn-accent:active {
+  transform: scale(0.95);
+}
+
+.ak-btn-accent:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Main Stage */
+.ak-main {
+  flex: 1;
+  max-width: 980px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ak-stage-card {
+  background: var(--ak-surface);
+  border-radius: var(--ak-radius-lg);
+  box-shadow: var(--ak-shadow-soft);
+  border: 1px solid rgba(43, 51, 48, 0.06);
+  padding: clamp(18px, 3vw, 30px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  position: relative;
+}
+
+/* Hub layout */
+.ak-hub-hero {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 24px;
+  align-items: center;
+  width: 100%;
+}
+
+@media (max-width: 740px) {
+  .ak-hub-hero {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+}
+
+.ak-companion-nest {
+  background: radial-gradient(circle at 50% 60%, var(--ak-accent-soft), var(--ak-surface-raised));
+  border-radius: 32px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  min-height: 250px;
+}
+
+.ak-nurture-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: var(--ak-radius-pill);
+  background: var(--ak-surface);
+  box-shadow: 0 4px 12px rgba(43, 51, 48, 0.06);
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--ak-ink);
+}
+
+.ak-activity-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+@media (max-width: 520px) {
+  .ak-activity-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+}
+
+.ak-game-tile {
+  min-height: 118px;
+  padding: 18px 14px;
+  border-radius: 24px;
+  background: var(--ak-surface-raised);
+  border: 2px solid transparent;
+  box-shadow: var(--ak-shadow-soft);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--ak-ink);
+  transition: transform 190ms cubic-bezier(0.34, 1.56, 0.64, 1), background-color 180ms ease;
+}
+
+.ak-game-tile:hover {
+  transform: translateY(-3px);
+}
+
+.ak-game-tile:active {
+  transform: scale(0.95);
+}
+
+.ak-game-tile[data-done='true'] {
+  background: var(--ak-accent-soft);
+}
+
+.ak-progress-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ak-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ak-surface-raised);
+  transition: transform 220ms ease, background-color 220ms ease;
+}
+
+.ak-dot[data-state='done'] {
+  background: var(--ak-accent);
+  transform: scale(1.1);
+}
+
+.ak-dot[data-state='current'] {
+  background: var(--ak-au-gold);
+  transform: scale(1.3);
+}
+
+/* Gentle breathing & squash-stretch keyframes */
+@keyframes akFloat {
+  0%, 100% { transform: translateY(0px) scaleY(1); }
+  50% { transform: translateY(-5px) scaleY(1.015); }
+}
+
+@keyframes akBreatheCircle {
+  0%, 100% { transform: scale(0.75); opacity: 0.72; }
+  50% { transform: scale(1.18); opacity: 1; }
+}
+
+@keyframes akFirefly {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(6px, -8px) scale(1.08); }
+}
+
+@keyframes akSoftFade {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.94); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.ak-float {
+  animation: akFloat 3.6s ease-in-out infinite;
+}
+
+.ak-breathe-orb {
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--ak-accent-soft), var(--ak-accent));
+  animation: akBreatheCircle 6s ease-in-out infinite;
+}
+
+.ak-neutral-wobble {
+  animation: akSoftFade 280ms ease;
+}
+
+/* Game canvases (touch-action: none prevents Safari scroll/zoom hijacking) */
+.ak-touch-canvas {
+  touch-action: none;
+  width: 100%;
+  max-width: 680px;
+  border-radius: 24px;
+  background: var(--ak-bg);
+  border: 2px solid var(--ak-surface-raised);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Parental hold ring */
+.ak-parent-hold {
+  min-width: 52px;
+  min-height: 52px;
+  border-radius: 50%;
+  background: var(--ak-surface);
+  border: 2px solid var(--ak-surface-raised);
+  color: var(--ak-ink-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.ak-parent-hold-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--ak-accent-soft);
+  transition: height 80ms linear;
+  pointer-events: none;
+}
+
+/* Modal / Adult Gate */
+.ak-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(31, 36, 45, 0.56);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 60;
+}
+
+.ak-modal {
+  background: var(--ak-surface);
+  color: var(--ak-ink);
+  border-radius: var(--ak-radius-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+  max-width: 560px;
+  width: 100%;
+  max-height: 90dvh;
+  overflow-y: auto;
+  padding: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.ak-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 2px solid var(--ak-surface-raised);
+  background: var(--ak-bg);
+  color: var(--ak-ink);
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.ak-input:focus {
+  outline: none;
+  border-color: var(--ak-accent);
+}
+
+.ak-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.ak-subtle-box {
+  background: var(--ak-bg);
+  border-radius: 16px;
+  padding: 14px 16px;
+  font-size: 0.9rem;
+  color: var(--ak-ink-muted);
+}

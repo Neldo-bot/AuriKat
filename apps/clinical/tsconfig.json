@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "rootDir": "src"
+  },
+  "references": [
+    { "path": "../../packages/core-engine" },
+    { "path": "../../packages/clinical-envelope" },
+    { "path": "../../packages/clinical-scoring" }
+  ],
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

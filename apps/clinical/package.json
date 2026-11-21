@@ -1,0 +1,19 @@
+{
+  "name": "@aurikat/clinical",
+  "version": "1.0.0-beta.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@aurikat/core-engine": "*",
+    "@aurikat/clinical-envelope": "*",
+    "@aurikat/clinical-scoring": "*",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "scripts": {
+    "dev": "vite --port 5174 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4174 --strictPort"
+  }
+}
