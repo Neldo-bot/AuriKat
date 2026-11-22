@@ -70,6 +70,15 @@ export type TrialErrorCategory =
 export type PointerInputType = 'touch' | 'pen' | 'mouse' | 'unknown';
 export type TabletPosture = 'flat' | 'handheld' | 'unknown';
 export type EmaEntryMode = 'child_solo' | 'caregiver_assisted';
+export type SessionPacingMode = 'clinical_full' | 'quick_demo';
+
+export interface CozyPetNeeds {
+  belly: number; // 35..100 (safe non-punitive floor >= 35)
+  joy: number; // 35..100
+  energy: number; // 35..100
+  sleeping: boolean;
+  lastUpdatedMs: number;
+}
 
 export interface SensoryCalmSettings {
   muted: boolean;
@@ -207,6 +216,7 @@ export interface PlayerCustomization {
   unlockedAccessories: AccessoryId[];
   unlockedStickers: string[];
   sharedDaysCount: number; // Cumulative nurture counter (never punitive streaks!)
+  petNeeds?: CozyPetNeeds;
 }
 
 export interface AssentRecord {
@@ -226,6 +236,7 @@ export interface RawSessionPayload {
   ageModule: AgeModuleId;
   subAgeBand: SubAgeBand;
   formVariant: FormVariant;
+  pacingMode?: SessionPacingMode;
   createdAtIsoYear: number;
   exportedAtIso: string;
   assent: AssentRecord;

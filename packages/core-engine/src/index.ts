@@ -2,6 +2,7 @@ export * from './types/domain.js';
 export * from './protocol/ProtocolMetadata.js';
 export * from './rig/CreatureRigContract.js';
 export * from './rig/RiveViewModelAdapterStub.js';
+export * from './rig/SpringPhysics.js';
 export * from './telemetry/MotorKinematicsAnalyzer.js';
 export * from './telemetry/TelemetryCollector.js';
 export * from './audio/GentleSoundEngine.js';

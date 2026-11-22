@@ -6,13 +6,16 @@ import {
   gentleSoundEngine,
   INTER_TRIAL_HOLDOVER_DEBOUNCE_MS,
   type SensoryCalmSettings,
+  type SessionPacingMode,
   type SubAgeBand,
   type TrialErrorCategory,
   type TrialRecord,
 } from '@aurikat/core-engine';
+import { GuidingHandOverlay } from '../components/GuidingHandOverlay.js';
 
 interface CognitiveFlexibilityGameProps {
   subAgeBand: SubAgeBand;
+  pacingMode?: SessionPacingMode;
   sensorySettings: SensoryCalmSettings;
   onComplete: (trials: TrialRecord[]) => void;
 }
@@ -29,22 +32,33 @@ interface DccsTrialSpec {
   shape: StimulusShape;
 }
 
-// Target boxes are fixed: Left = Blue Star, Right = Coral Circle
-// Test stimuli are bivalent conflicting: Blue Circle OR Coral Star!
-function buildDccsSequence(subAgeBand: SubAgeBand): DccsTrialSpec[] {
-  const mixedCount = subAgeBand === '4_5' ? 24 : 30;
+/**
+ * Target sorting boxes are fixed:
+ * - Left Box = Blue Star
+ * - Right Box = Coral Circle
+ * Test cards are bivalent conflicting (Blue Circle OR Coral Star) so Color and Shape always point to opposite boxes!
+ */
+function buildDccsSequence(subAgeBand: SubAgeBand, pacingMode: SessionPacingMode): DccsTrialSpec[] {
+  const isQuick = pacingMode === 'quick_demo';
+  const preCount = isQuick ? 3 : 5;
+  const postCount = isQuick ? 3 : 6;
+  const mixedCount = isQuick ? 8 : subAgeBand === '4_5' ? 24 : 30;
+
+  // 2 guided practice trials: 1 showing COLOR rule + 1 showing SHAPE rule!
   const practice: DccsTrialSpec[] = [
-    { blockType: 'practice', isPractice: true, rule: 'color', color: 'blue', shape: 'star' },
-    { blockType: 'practice', isPractice: true, rule: 'color', color: 'coral', shape: 'circle' },
+    { blockType: 'practice', isPractice: true, rule: 'color', color: 'blue', shape: 'circle' },
+    { blockType: 'practice', isPractice: true, rule: 'shape', color: 'blue', shape: 'circle' },
   ];
-  const pre: DccsTrialSpec[] = Array.from({ length: 5 }, (_, i) => ({
+
+  const pre: DccsTrialSpec[] = Array.from({ length: preCount }, (_, i) => ({
     blockType: 'pre_switch',
     isPractice: false,
     rule: 'color',
     color: i % 2 === 0 ? 'blue' : 'coral',
     shape: i % 2 === 0 ? 'circle' : 'star',
   }));
-  const post: DccsTrialSpec[] = Array.from({ length: 6 }, (_, i) => ({
+
+  const post: DccsTrialSpec[] = Array.from({ length: postCount }, (_, i) => ({
     blockType: 'post_switch',
     isPractice: false,
     rule: 'shape',
@@ -52,11 +66,11 @@ function buildDccsSequence(subAgeBand: SubAgeBand): DccsTrialSpec[] {
     shape: i % 2 === 0 ? 'star' : 'circle',
   }));
 
-  // Controlled 75% dominant (shape) / 25% switch (color) mixed block (NIH Toolbox DCCS structure)
   const mixed: DccsTrialSpec[] = [];
   let prevRule: DccsDimension = 'shape';
   for (let i = 0; i < mixedCount; i++) {
-    const rule: DccsDimension = i === 3 || i === 8 || i === 14 || i === 19 || i === 25 ? 'color' : 'shape';
+    const switchIndices = isQuick ? [2, 5] : [3, 8, 14, 19, 25];
+    const rule: DccsDimension = switchIndices.includes(i) ? 'color' : 'shape';
     const isSwitch = rule !== prevRule;
     mixed.push({
       blockType: isSwitch ? 'mixed_switch' : 'mixed_repeat',
@@ -79,7 +93,7 @@ const COLOR_HEX: Record<StimulusColor, string> = {
 const ShapeGlyph: React.FC<{ shape: StimulusShape; color: StimulusColor; size?: number }> = ({
   shape,
   color,
-  size = 54,
+  size = 58,
 }) => (
   <svg width={size} height={size} viewBox="0 0 60 60" aria-hidden="true">
     {shape === 'star' ? (
@@ -104,21 +118,24 @@ const ShapeGlyph: React.FC<{ shape: StimulusShape; color: StimulusColor; size?: 
 );
 
 /**
- * Game 2: «Las Cajas Cambiantes» (CLIN-04 + IC-1)
- * - NIH Toolbox DCCS staged structure (practice -> 5 pre -> 6 post -> 24/30 mixed)
- * - IC-1 Anti-Contamination: 100% NEUTRAL Gentle Fail State with ZERO corrective hint!
- * - Separates perseverative vs. regressive vs. non-systematic errors accurately.
+ * Game 2 v2.1: «2. Ordená las Cajas» (CLIN-04 + IC-1)
+ * - Unmistakable rotating Rule Signboard (COLOR paint palette vs. FORMA shape cutter)
+ * - Flying card animation into mailbox sorting boxes
+ * - 2 guided practice trials demonstrating BOTH rules with GuidingHandOverlay
+ * - Scored trials preserve 100% neutral Gentle Fail State (zero corrective hint, IC-1)
  */
 export const CognitiveFlexibilityGame: React.FC<CognitiveFlexibilityGameProps> = ({
   subAgeBand,
+  pacingMode = 'clinical_full',
   sensorySettings,
   onComplete,
 }) => {
-  const sequence = useMemo(() => buildDccsSequence(subAgeBand), [subAgeBand]);
+  const sequence = useMemo(() => buildDccsSequence(subAgeBand, pacingMode), [subAgeBand, pacingMode]);
   const [phase, setPhase] = useState<'demo' | 'play' | 'done'>('demo');
-  const [demoHighlight, setDemoHighlight] = useState(false);
+  const [demoStep, setDemoStep] = useState<0 | 1>(0);
   const [idx, setIdx] = useState(0);
-  const [wobble, setWobble] = useState(false);
+  const [flyDir, setFlyDir] = useState<'left' | 'right' | null>(null);
+  const [ruleFlipKey, setRuleFlipKey] = useState(0);
 
   const trialsRef = useRef<TrialRecord[]>([]);
   const shownAtRef = useRef<number>(performance.now());
@@ -135,15 +152,15 @@ export const CognitiveFlexibilityGame: React.FC<CognitiveFlexibilityGameProps> =
     return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
 
-  // Magrid+ 2s silent demo
+  // Theatrical 2.4s animated demo showing COLOR -> Left Box, then FORMA -> Right Box
   useEffect(() => {
     if (phase !== 'demo') return;
-    setDemoHighlight(false);
-    const t1 = window.setTimeout(() => setDemoHighlight(true), 900);
+    setDemoStep(0);
+    const t1 = window.setTimeout(() => setDemoStep(1), 1150);
     const t2 = window.setTimeout(() => {
       setPhase('play');
       shownAtRef.current = performance.now();
-    }, 2200);
+    }, 2400);
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
@@ -158,12 +175,23 @@ export const CognitiveFlexibilityGame: React.FC<CognitiveFlexibilityGameProps> =
     if (current.rule !== lastRuleRef.current) {
       correctSinceRuleSwitchRef.current = 0;
       lastRuleRef.current = current.rule;
+      setRuleFlipKey((k) => k + 1);
     }
     shownAtRef.current = performance.now();
   }, [phase, idx, current]);
 
+  const getExpectedSide = (rule: DccsDimension, color: StimulusColor, shape: StimulusShape): 'left' | 'right' => {
+    return rule === 'color'
+      ? color === 'blue'
+        ? 'left'
+        : 'right'
+      : shape === 'star'
+        ? 'left'
+        : 'right';
+  };
+
   const handleBoxSelect = (boxSide: 'left' | 'right') => {
-    if (phase !== 'play' || !current) return;
+    if (phase !== 'play' || !current || flyDir !== null) return;
     const now = performance.now();
     if (prevEndRef.current > 0 && now - prevEndRef.current < INTER_TRIAL_HOLDOVER_DEBOUNCE_MS) {
       const cat = classifyHoldoverVsImpulsive(now - prevEndRef.current);
@@ -185,30 +213,17 @@ export const CognitiveFlexibilityGame: React.FC<CognitiveFlexibilityGameProps> =
     }
 
     const rtMs = Math.max(0, now - shownAtRef.current);
-    // Left box = Blue Star, Right box = Coral Circle
-    const expectedSide: 'left' | 'right' =
-      current.rule === 'color'
-        ? current.color === 'blue'
-          ? 'left'
-          : 'right'
-        : current.shape === 'star'
-          ? 'left'
-          : 'right';
-
-    const otherRuleSide: 'left' | 'right' =
-      current.rule === 'color'
-        ? current.shape === 'star'
-          ? 'left'
-          : 'right'
-        : current.color === 'blue'
-          ? 'left'
-          : 'right';
+    const expectedSide = getExpectedSide(current.rule, current.color, current.shape);
+    const otherRuleSide = getExpectedSide(
+      current.rule === 'color' ? 'shape' : 'color',
+      current.color,
+      current.shape,
+    );
 
     const correct = boxSide === expectedSide ? 1 : 0;
     let errorCategory: TrialErrorCategory = 'none';
     if (!correct) {
       if (boxSide === otherRuleSide && !current.isPractice && current.blockType !== 'pre_switch') {
-        // Distinguish perseverative (before mastering new rule) vs. regressive (after >= 1 correct under new rule)
         errorCategory = correctSinceRuleSwitchRef.current >= 1 ? 'regressive' : 'perseverative';
       } else {
         errorCategory = 'non_systematic';
@@ -232,13 +247,13 @@ export const CognitiveFlexibilityGame: React.FC<CognitiveFlexibilityGameProps> =
       interruptedByVisibility: interruptedRef.current,
     });
 
-    // IC-1: Strictly NEUTRAL feedback (no corrective flash on correct box!)
+    // IC-1: Strictly NEUTRAL feedback on scored trials (card flies into chosen box either way!)
     gentleSoundEngine.playCue(correct ? 'tap_soft' : 'neutral_soft_fail');
-    setWobble(true);
+    setFlyDir(boxSide);
     prevEndRef.current = performance.now();
 
     window.setTimeout(() => {
-      setWobble(false);
+      setFlyDir(null);
       if (idx + 1 >= sequence.length) {
         setPhase('done');
         gentleSoundEngine.playCue('celebrate_chime');
@@ -246,113 +261,157 @@ export const CognitiveFlexibilityGame: React.FC<CognitiveFlexibilityGameProps> =
       } else {
         setIdx((i) => i + 1);
       }
-    }, 260);
+    }, 270);
   };
 
-  const activeRule: DccsDimension = phase === 'demo' ? 'color' : current?.rule ?? 'color';
+  const activeRule: DccsDimension =
+    phase === 'demo' ? (demoStep === 0 ? 'color' : 'shape') : current?.rule ?? 'color';
   const activeColor: StimulusColor = phase === 'demo' ? 'blue' : current?.color ?? 'blue';
   const activeShape: StimulusShape = phase === 'demo' ? 'circle' : current?.shape ?? 'circle';
+  const expectedSideNow = getExpectedSide(activeRule, activeColor, activeShape);
+  const showGuidingHand = phase === 'demo' || Boolean(current?.isPractice);
 
   return (
-    <section className="ak-stage-card" aria-label="Las Cajas Cambiantes">
-      <div className="ak-row" style={{ width: '100%', justifyContent: 'space-between' }}>
-        <div className="ak-progress-dots" aria-hidden="true">
-          {sequence.filter((_, i) => i % 2 === 0).map((_, k) => (
-            <span
-              key={k}
-              className="ak-dot"
-              data-state={k * 2 < idx ? 'done' : Math.abs(k * 2 - idx) <= 1 ? 'current' : 'todo'}
-            />
-          ))}
+    <section className="ak-stage-card" aria-label="Ordená las Cajas">
+      <div className="ak-game-microheader">
+        <span className="ak-phase-pill">
+          {phase === 'demo'
+            ? '👀 Mirá cómo cambia la regla'
+            : current?.isPractice
+              ? '✨ Práctica guiada'
+              : activeRule === 'color'
+                ? '🎨 Guardá por COLOR'
+                : '⭐ Guardá por FORMA'}
+        </span>
+
+        <div className="ak-row" style={{ gap: 10 }}>
+          <div className="ak-progress-dots" aria-hidden="true">
+            {sequence.map((_, i) => (
+              <span
+                key={i}
+                className="ak-dot"
+                data-state={i < idx ? 'done' : i === idx ? 'current' : 'todo'}
+              />
+            ))}
+          </div>
+          <button
+            type="button"
+            className="ak-primary-target"
+            style={{ minHeight: 46, minWidth: 112, padding: '6px 14px', flexDirection: 'row' }}
+            onClick={() => setPhase('demo')}
+          >
+            <span>↻ Ver ejemplo</span>
+          </button>
         </div>
-        <button
-          type="button"
-          className="ak-icon-btn"
-          style={{ minWidth: 48, minHeight: 48 }}
-          onClick={() => setPhase('demo')}
-          aria-label="Ver demostración"
-          title="Ver demo"
-        >
-          ↻
-        </button>
       </div>
 
-      {/* Zero-Text Pictographic Dimension Indicator (Paint Drop = COLOR vs. Outline = SHAPE) */}
+      {/* Giant Rotating Rule Signboard (COLOR vs FORMA) */}
       <div
+        key={ruleFlipKey}
+        className="ak-rule-signboard"
         style={{
-          padding: '10px 24px',
-          borderRadius: 999,
+          padding: '12px 28px',
+          borderRadius: 22,
           background: activeRule === 'color' ? '#E3EEF5' : '#EFE7DC',
-          border: '2px solid var(--ak-accent)',
+          border: '3px solid var(--ak-accent)',
+          boxShadow: 'var(--ak-shadow-soft)',
           display: 'inline-flex',
           alignItems: 'center',
-          gap: 12,
+          gap: 14,
         }}
-        aria-label={activeRule === 'color' ? 'Regla color' : 'Regla forma'}
       >
         {activeRule === 'color' ? (
-          <svg width="34" height="34" viewBox="0 0 36 36" aria-hidden="true">
-            <path d="M18 4 C18 4 8 15 8 22 a10 10 0 0 0 20 0 C28 15 18 4 18 4 Z" fill="#5B85A8" />
-            <circle cx="24" cy="24" r="5" fill="#C77A6B" />
-          </svg>
+          <>
+            <svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true">
+              <circle cx="15" cy="21" r="11" fill="#5B85A8" stroke="#2B3330" strokeWidth="2.4" />
+              <circle cx="29" cy="21" r="11" fill="#C77A6B" stroke="#2B3330" strokeWidth="2.4" />
+            </svg>
+            <div style={{ textAlign: 'left' }}>
+              <strong style={{ fontSize: '1.15rem', display: 'block' }}>COLOR</strong>
+              <span style={{ fontSize: '0.82rem', color: 'var(--ak-ink-muted)' }}>Azul o Coral</span>
+            </div>
+          </>
         ) : (
-          <svg width="34" height="34" viewBox="0 0 36 36" aria-hidden="true">
-            <polygon points="12,6 15,13 22,14 16,19 18,26 12,22 6,26 8,19 2,14 9,13" fill="none" stroke="#2B3330" strokeWidth="2.5" />
-            <circle cx="26" cy="24" r="7" fill="none" stroke="#2B3330" strokeWidth="2.5" />
-          </svg>
+          <>
+            <svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true">
+              <polygon
+                points="14,7 17,15 26,16 19,22 21,31 14,26 7,31 9,22 2,16 11,15"
+                fill="none"
+                stroke="#2B3330"
+                strokeWidth="2.8"
+              />
+              <circle cx="31" cy="24" r="8" fill="none" stroke="#2B3330" strokeWidth="2.8" />
+            </svg>
+            <div style={{ textAlign: 'left' }}>
+              <strong style={{ fontSize: '1.15rem', display: 'block' }}>FORMA</strong>
+              <span style={{ fontSize: '0.82rem', color: 'var(--ak-ink-muted)' }}>Estrella o Círculo</span>
+            </div>
+          </>
         )}
       </div>
 
-      {/* Center Bivalent Toy Card */}
+      {/* Center Flying Toy Card */}
       <div
-        className={wobble ? 'ak-neutral-wobble' : undefined}
+        className={flyDir === 'left' ? 'ak-fly-left' : flyDir === 'right' ? 'ak-fly-right' : undefined}
         style={{
-          width: 146,
-          height: 146,
+          width: 152,
+          height: 152,
           borderRadius: 28,
           background: 'var(--ak-bg)',
           border: '3px solid var(--ak-surface-raised)',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
+          gap: 6,
           boxShadow: 'var(--ak-shadow-soft)',
         }}
       >
-        <ShapeGlyph shape={activeShape} color={activeColor} size={86} />
+        <ShapeGlyph shape={activeShape} color={activeColor} size={88} />
       </div>
 
-      {/* 2 Large Sorting Boxes (Left = Blue Star | Right = Coral Circle) */}
+      {/* 2 Mailbox Sorting Boxes (Left = Blue Star | Right = Coral Circle) */}
       <div
         style={{
+          position: 'relative',
           display: 'grid',
-          gridTemplateColumns: 'repeat(2, minmax(126px, 210px))',
+          gridTemplateColumns: 'repeat(2, minmax(136px, 225px))',
           gap: 24,
           justifyContent: 'center',
           width: '100%',
+          maxWidth: 520,
         }}
       >
+        {showGuidingHand && (
+          <GuidingHandOverlay
+            mode="tap"
+            toX={expectedSideNow === 'left' ? '26%' : '74%'}
+            toY="54%"
+            label={activeRule === 'color' ? 'Mismo COLOR' : 'Misma FORMA'}
+          />
+        )}
+
         <button
           type="button"
-          className="ak-primary-target"
-          style={{
-            minHeight: 118,
-            background: phase === 'demo' && demoHighlight ? 'var(--ak-accent-soft)' : 'var(--ak-surface-raised)',
-            transform: phase === 'demo' && demoHighlight ? 'scale(1.06)' : undefined,
-          }}
+          className={`ak-primary-target ${showGuidingHand && expectedSideNow === 'left' ? 'ak-practice-glow' : ''}`}
+          style={{ minHeight: 132, background: 'var(--ak-surface-raised)' }}
           onClick={() => handleBoxSelect('left')}
           aria-label="Caja estrella azul"
         >
-          <ShapeGlyph shape="star" color="blue" size={64} />
+          {/* Mailbox slot */}
+          <div style={{ width: '68%', height: 10, borderRadius: 99, background: 'rgba(43,51,48,0.22)' }} />
+          <ShapeGlyph shape="star" color="blue" size={66} />
         </button>
 
         <button
           type="button"
-          className="ak-primary-target"
-          style={{ minHeight: 118, background: 'var(--ak-surface-raised)' }}
+          className={`ak-primary-target ${showGuidingHand && expectedSideNow === 'right' ? 'ak-practice-glow' : ''}`}
+          style={{ minHeight: 132, background: 'var(--ak-surface-raised)' }}
           onClick={() => handleBoxSelect('right')}
           aria-label="Caja círculo coral"
         >
-          <ShapeGlyph shape="circle" color="coral" size={64} />
+          <div style={{ width: '68%', height: 10, borderRadius: 99, background: 'rgba(43,51,48,0.22)' }} />
+          <ShapeGlyph shape="circle" color="coral" size={66} />
         </button>
       </div>
     </section>

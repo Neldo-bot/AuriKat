@@ -2,10 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
   appendEmaEntry,
   appendSensoryAdjustment,
+  applyGentleNeedsDecay,
+  createDefaultPetNeeds,
   createInitialSessionPayload,
   encodeSensoryBitmask,
   estimateSamplingHz,
   IndexedDbStorageAdapter,
+  SAFE_NEEDS_FLOOR,
+  stepPendulum,
+  stepRollingToy,
+  stepSpring1D,
   updateDeviceMetaFromSamples,
   type PointerSample,
 } from './index.js';
@@ -73,5 +79,41 @@ describe('TelemetryCollector & IndexedDbStorageAdapter (TECH-02 / IC-2)', () => 
       calmBreathUsed: false,
     });
     expect(session.emaEntries.length).toBe(1);
+  });
+
+  it('enforces non-punitive >= 35% floor on CozyPetNeeds even after months of absence and recharges energy while sleeping', () => {
+    const t0 = 1_000_000;
+    const base = createDefaultPetNeeds(t0);
+    // Simulate 500 hours of absence
+    const afterLongAbsence = applyGentleNeedsDecay(base, t0 + 500 * 3600 * 1000);
+    expect(afterLongAbsence.belly).toBe(SAFE_NEEDS_FLOOR);
+    expect(afterLongAbsence.joy).toBe(SAFE_NEEDS_FLOOR);
+    expect(afterLongAbsence.energy).toBe(SAFE_NEEDS_FLOOR);
+
+    // Sleeping recharges energy gently
+    const sleepingNeeds = { ...afterLongAbsence, sleeping: true };
+    const afterNap = applyGentleNeedsDecay(sleepingNeeds, afterLongAbsence.lastUpdatedMs + 2 * 3600 * 1000);
+    expect(afterNap.energy).toBeGreaterThan(SAFE_NEEDS_FLOOR + 25);
+  });
+
+  it('converges 60 fps spring physics, pendulum and rolling toy cleanly without NaN or divergence', () => {
+    let sp = { pos: 0, vel: 0 };
+    for (let i = 0; i < 90; i++) {
+      sp = stepSpring1D(sp, 1, 160, 20, 1 / 60);
+    }
+    expect(sp.pos).toBeCloseTo(1, 2);
+
+    let pend = { angleDeg: 28, omegaDeg: 0 };
+    for (let i = 0; i < 180; i++) {
+      pend = stepPendulum(pend, 1 / 60);
+    }
+    expect(Math.abs(pend.angleDeg)).toBeLessThan(3);
+
+    let roll = { x: 0.78, vx: 2.5, rotationDeg: 0 };
+    for (let i = 0; i < 60; i++) {
+      roll = stepRollingToy(roll, 1 / 60);
+    }
+    expect(roll.x).toBeLessThanOrEqual(0.85);
+    expect(roll.x).toBeGreaterThanOrEqual(-0.85);
   });
 });

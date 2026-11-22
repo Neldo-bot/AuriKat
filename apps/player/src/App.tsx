@@ -3,12 +3,15 @@ import {
   ACCESSORY_CATALOG,
   appendEmaEntry,
   appendSensoryAdjustment,
+  applyGentleNeedsDecay,
   CALM_PALETTES,
+  createDefaultPetNeeds,
   createInitialSessionPayload,
   gentleSoundEngine,
   IndexedDbStorageAdapter,
   STICKER_CATALOG,
   updateDeviceMetaFromSamples,
+  type CozyPetNeeds,
   type CreatureViewModelInputs,
   type EmaEntry,
   type FormVariant,
@@ -16,6 +19,7 @@ import {
   type PointerSample,
   type RawSessionPayload,
   type SensoryCalmSettings,
+  type SessionPacingMode,
   type StrokeRecord,
   type SubAgeBand,
   type TrialRecord,
@@ -23,8 +27,8 @@ import {
 import { ChildAssentScreen } from './components/ChildAssentScreen.js';
 import { CreatureCustomiser } from './components/CreatureCustomiser.js';
 import { DailyMoodHabits } from './components/DailyMoodHabits.js';
+import { InteractiveHabitatStage } from './components/InteractiveHabitatStage.js';
 import { ParentalExportGate } from './components/ParentalExportGate.js';
-import { ProceduralCreatureRig } from './components/ProceduralCreatureRig.js';
 import { SensoryCalmBar } from './components/SensoryCalmBar.js';
 import { CognitiveFlexibilityGame } from './games/CognitiveFlexibilityGame.js';
 import { EmotionToMGame } from './games/EmotionToMGame.js';
@@ -54,15 +58,22 @@ export const App: React.FC = () => {
   const [pauseOpen, setPauseOpen] = useState(false);
   const [parentGateOpen, setParentGateOpen] = useState(false);
   const [celebrationToast, setCelebrationToast] = useState<string | null>(null);
-  const [petEmotion, setPetEmotion] = useState<'calm' | 'happy'>('calm');
 
-  // Hydrate persisted IndexedDB state & request persistent storage (TECH-02 anti-ITP)
+  // Hydrate persisted IndexedDB state & apply non-punitive gentle needs decay (TECH-02 + GAM-01)
   useEffect(() => {
     void storage.requestPersistence();
     void (async () => {
       const saved = await storage.getItem<RawSessionPayload>(SESSION_KEY);
       if (saved && saved.schemaVersion === '2.0.0') {
-        setSession(saved);
+        const refreshedNeeds = applyGentleNeedsDecay(saved.customization.petNeeds);
+        setSession({
+          ...saved,
+          pacingMode: saved.pacingMode ?? 'clinical_full',
+          customization: {
+            ...saved.customization,
+            petNeeds: refreshedNeeds,
+          },
+        });
       }
       const savedPrefs = await storage.getItem<PilotLocalSettings>(SETTINGS_KEY);
       if (savedPrefs) {
@@ -72,7 +83,6 @@ export const App: React.FC = () => {
     })();
   }, []);
 
-  // Persist session changes automatically
   useEffect(() => {
     void storage.setItem(SESSION_KEY, session, 60);
   }, [session]);
@@ -104,15 +114,15 @@ export const App: React.FC = () => {
     () => ({
       lookX: 0,
       lookY: 0,
-      emotion: petEmotion,
-      action: petEmotion === 'happy' ? 'wave' : 'idle',
+      emotion: 'calm',
+      action: 'idle',
       species: session.customization.species,
       archetype: session.customization.archetype,
       paletteId: session.customization.paletteId,
       accessory: session.customization.accessory,
       motionScale: session.sensorySettingsFinal.motionScale,
     }),
-    [petEmotion, session.customization, session.sensorySettingsFinal.motionScale],
+    [session.customization, session.sensorySettingsFinal.motionScale],
   );
 
   const activeGameContext = (): GameId | 'hub' | 'ema' => {
@@ -148,7 +158,6 @@ export const App: React.FC = () => {
     });
   };
 
-  // Deterministic, 100% guaranteed cosmetic reward on participation (SDT / RITEC-8 — 0 loot boxes)
   const grantGuaranteedReward = (prev: RawSessionPayload): RawSessionPayload => {
     const nextSticker = STICKER_CATALOG.find(
       (s) => !prev.customization.unlockedStickers.includes(s.id),
@@ -156,6 +165,7 @@ export const App: React.FC = () => {
     const nextAcc = ACCESSORY_CATALOG.find(
       (a) => !prev.customization.unlockedAccessories.includes(a.id),
     );
+    const baseNeeds = prev.customization.petNeeds ?? createDefaultPetNeeds();
     return {
       ...prev,
       customization: {
@@ -166,6 +176,11 @@ export const App: React.FC = () => {
         unlockedAccessories: nextAcc
           ? [...prev.customization.unlockedAccessories, nextAcc.id]
           : prev.customization.unlockedAccessories,
+        petNeeds: {
+          ...baseNeeds,
+          joy: Math.min(100, baseNeeds.joy + 12),
+          lastUpdatedMs: Date.now(),
+        },
       },
     };
   };
@@ -229,6 +244,16 @@ export const App: React.FC = () => {
     showRewardBanner('¡Gracias por compartir tu día con AuriKat! ☀');
   };
 
+  const handleUpdateNeeds = (nextNeeds: CozyPetNeeds) => {
+    setSession((prev) => ({
+      ...prev,
+      customization: {
+        ...prev.customization,
+        petNeeds: nextNeeds,
+      },
+    }));
+  };
+
   const handleSamplesObserved = (samples: PointerSample[], coalescedSupported: boolean) => {
     setSession((prev) => ({
       ...prev,
@@ -243,6 +268,8 @@ export const App: React.FC = () => {
     setPilotSettings({ pilotAssentEnabled: true, savedClinicianLockCode: '' });
     setView('hub');
   };
+
+  const pacingMode: SessionPacingMode = session.pacingMode ?? 'clinical_full';
 
   return (
     <div
@@ -321,129 +348,114 @@ export const App: React.FC = () => {
             }}
           />
         ) : view === 'hub' ? (
-          <section className="ak-stage-card" aria-label="Rincón de AuriKat">
-            <div className="ak-hub-hero">
-              <div className="ak-companion-nest">
-                <ProceduralCreatureRig
-                  inputs={creatureInputs}
-                  size={210}
-                  onTap={() => {
-                    gentleSoundEngine.unlock();
-                    gentleSoundEngine.playCue('animalese_happy');
-                    setPetEmotion('happy');
-                    window.setTimeout(() => setPetEmotion('calm'), 1400);
-                  }}
-                />
-                <div className="ak-row" style={{ marginTop: 10 }}>
-                  <span className="ak-nurture-pill">
-                    ☀ {session.customization.sharedDaysCount} días compartidos
-                  </span>
-                  <span className="ak-nurture-pill">
-                    ★ {session.customization.unlockedStickers.length}
-                  </span>
-                </div>
-              </div>
+          <section className="ak-stage-card" aria-label="Hogar interactivo de AuriKat">
+            {/* Species-Specific Interactive Home + 6 Hearthstone Props + Cozy Care Bar */}
+            <InteractiveHabitatStage
+              creatureInputs={creatureInputs}
+              petNeeds={session.customization.petNeeds}
+              sharedDaysCount={session.customization.sharedDaysCount}
+              stickersCount={session.customization.unlockedStickers.length}
+              onUpdateNeeds={handleUpdateNeeds}
+            />
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <div className="ak-row">
-                  <button
-                    type="button"
-                    className="ak-btn-accent"
-                    style={{ flex: 1 }}
-                    onClick={() => {
-                      gentleSoundEngine.playCue('tap_soft');
-                      setView('ema');
-                    }}
-                  >
-                    <span>☀ Mi Día</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="ak-primary-target"
-                    style={{ flex: 1, minHeight: 64 }}
-                    onClick={() => {
-                      gentleSoundEngine.playCue('tap_soft');
-                      setView('customise');
-                    }}
-                  >
-                    <span>🎨 Estilo y Álbum</span>
-                  </button>
-                </div>
+            {/* Daily Diary & Customization Row */}
+            <div className="ak-row" style={{ width: '100%' }}>
+              <button
+                type="button"
+                className="ak-btn-accent"
+                style={{ flex: 1 }}
+                onClick={() => {
+                  gentleSoundEngine.playCue('tap_soft');
+                  setView('ema');
+                }}
+              >
+                <span>☀ Mi Día con AuriKat</span>
+              </button>
+              <button
+                type="button"
+                className="ak-primary-target"
+                style={{ flex: 1, minHeight: 64, flexDirection: 'row' }}
+                onClick={() => {
+                  gentleSoundEngine.playCue('tap_soft');
+                  setView('customise');
+                }}
+              >
+                <span>🎨 Especie, Hogar y Álbum</span>
+              </button>
+            </div>
 
-                {/* 4 Playful Zero-Reading Minigame Tiles */}
-                <div className="ak-activity-grid">
-                  <button
-                    type="button"
-                    className="ak-game-tile"
-                    data-done={completedGames.has('G1_JA')}
-                    onClick={() => {
-                      gentleSoundEngine.unlock();
-                      gentleSoundEngine.playCue('animalese_curious');
-                      setView('g1');
-                    }}
-                  >
-                    <svg width="42" height="42" viewBox="0 0 48 48" aria-hidden="true">
-                      <rect x="6" y="18" width="36" height="22" rx="6" fill="#B58E65" stroke="#4A3C31" strokeWidth="2.5" />
-                      <polygon points="24,6 27,13 34,14 29,19 30,26 24,22 18,26 19,19 14,14 21,13" fill="var(--ak-au-gold)" />
-                    </svg>
-                    <strong>1. Cofres</strong>
-                  </button>
+            {/* 4 Redesigned Crystal-Clear Minigame Tiles */}
+            <div className="ak-activity-grid">
+              <button
+                type="button"
+                className="ak-game-tile"
+                data-done={completedGames.has('G1_JA')}
+                onClick={() => {
+                  gentleSoundEngine.unlock();
+                  gentleSoundEngine.playCue('animalese_curious');
+                  setView('g1');
+                }}
+              >
+                <svg width="46" height="46" viewBox="0 0 48 48" aria-hidden="true">
+                  <rect x="6" y="18" width="36" height="22" rx="6" fill="#B58E65" stroke="#4A3C31" strokeWidth="2.5" />
+                  <polygon points="24,5 27,13 35,14 29,19 31,27 24,22 17,27 19,19 13,14 21,13" fill="var(--ak-au-gold)" />
+                </svg>
+                <strong>1. ¿Dónde miró?</strong>
+              </button>
 
-                  <button
-                    type="button"
-                    className="ak-game-tile"
-                    data-done={completedGames.has('G2_DCCS')}
-                    onClick={() => {
-                      gentleSoundEngine.unlock();
-                      gentleSoundEngine.playCue('tap_soft');
-                      setView('g2');
-                    }}
-                  >
-                    <svg width="42" height="42" viewBox="0 0 48 48" aria-hidden="true">
-                      <polygon points="15,8 19,17 28,18 21,24 23,34 15,29 7,34 9,24 2,18 11,17" fill="#5B85A8" />
-                      <circle cx="34" cy="30" r="11" fill="#C77A6B" />
-                    </svg>
-                    <strong>2. Cajas</strong>
-                  </button>
+              <button
+                type="button"
+                className="ak-game-tile"
+                data-done={completedGames.has('G2_DCCS')}
+                onClick={() => {
+                  gentleSoundEngine.unlock();
+                  gentleSoundEngine.playCue('tap_soft');
+                  setView('g2');
+                }}
+              >
+                <svg width="46" height="46" viewBox="0 0 48 48" aria-hidden="true">
+                  <polygon points="15,8 19,17 28,18 21,24 23,34 15,29 7,34 9,24 2,18 11,17" fill="#5B85A8" />
+                  <circle cx="34" cy="30" r="11" fill="#C77A6B" />
+                </svg>
+                <strong>2. Ordená las Cajas</strong>
+              </button>
 
-                  <button
-                    type="button"
-                    className="ak-game-tile"
-                    data-done={completedGames.has('G3_TOM')}
-                    onClick={() => {
-                      gentleSoundEngine.unlock();
-                      gentleSoundEngine.playCue('animalese_curious');
-                      setView('g3');
-                    }}
-                  >
-                    <svg width="42" height="42" viewBox="0 0 48 48" aria-hidden="true">
-                      <circle cx="24" cy="24" r="18" fill="var(--ak-accent-soft)" stroke="var(--ak-accent)" strokeWidth="2.8" />
-                      <circle cx="18" cy="21" r="2.8" fill="var(--ak-ink)" />
-                      <circle cx="30" cy="21" r="2.8" fill="var(--ak-ink)" />
-                      <path d="M17 30 Q24 35 31 30" fill="none" stroke="var(--ak-ink)" strokeWidth="2.8" strokeLinecap="round" />
-                    </svg>
-                    <strong>3. Historias</strong>
-                  </button>
+              <button
+                type="button"
+                className="ak-game-tile"
+                data-done={completedGames.has('G3_TOM')}
+                onClick={() => {
+                  gentleSoundEngine.unlock();
+                  gentleSoundEngine.playCue('animalese_curious');
+                  setView('g3');
+                }}
+              >
+                <svg width="46" height="46" viewBox="0 0 48 48" aria-hidden="true">
+                  <circle cx="24" cy="24" r="18" fill="var(--ak-accent-soft)" stroke="var(--ak-accent)" strokeWidth="2.8" />
+                  <circle cx="18" cy="21" r="2.8" fill="var(--ak-ink)" />
+                  <circle cx="30" cy="21" r="2.8" fill="var(--ak-ink)" />
+                  <path d="M17 30 Q24 35 31 30" fill="none" stroke="var(--ak-ink)" strokeWidth="2.8" strokeLinecap="round" />
+                </svg>
+                <strong>3. Historias</strong>
+              </button>
 
-                  <button
-                    type="button"
-                    className="ak-game-tile"
-                    data-done={completedGames.has('G4B_MOTOR')}
-                    onClick={() => {
-                      gentleSoundEngine.unlock();
-                      gentleSoundEngine.playCue('tap_soft');
-                      setView('g4');
-                    }}
-                  >
-                    <svg width="42" height="42" viewBox="0 0 48 48" aria-hidden="true">
-                      <path d="M8 34 Q24 10 40 34" fill="none" stroke="var(--ak-au-gold)" strokeWidth="4.5" strokeLinecap="round" />
-                      <circle cx="10" cy="33" r="6" fill="var(--ak-au-gold)" />
-                      <circle cx="38" cy="33" r="7" fill="var(--ak-accent)" />
-                    </svg>
-                    <strong>4. Jardín</strong>
-                  </button>
-                </div>
-              </div>
+              <button
+                type="button"
+                className="ak-game-tile"
+                data-done={completedGames.has('G4B_MOTOR')}
+                onClick={() => {
+                  gentleSoundEngine.unlock();
+                  gentleSoundEngine.playCue('tap_soft');
+                  setView('g4');
+                }}
+              >
+                <svg width="46" height="46" viewBox="0 0 48 48" aria-hidden="true">
+                  <path d="M8 34 Q24 10 40 34" fill="none" stroke="var(--ak-au-gold)" strokeWidth="4.5" strokeLinecap="round" />
+                  <circle cx="10" cy="33" r="6" fill="var(--ak-au-gold)" />
+                  <circle cx="38" cy="33" r="7" fill="var(--ak-accent)" />
+                </svg>
+                <strong>4. Burbujas y Cometas</strong>
+              </button>
             </div>
           </section>
         ) : view === 'customise' ? (
@@ -465,12 +477,14 @@ export const App: React.FC = () => {
           <JointAttentionGame
             creatureInputs={creatureInputs}
             subAgeBand={session.subAgeBand}
+            pacingMode={pacingMode}
             sensorySettings={session.sensorySettingsFinal}
             onComplete={(t) => handleCompleteTrials('G1_JA', t)}
           />
         ) : view === 'g2' ? (
           <CognitiveFlexibilityGame
             subAgeBand={session.subAgeBand}
+            pacingMode={pacingMode}
             sensorySettings={session.sensorySettingsFinal}
             onComplete={(t) => handleCompleteTrials('G2_DCCS', t)}
           />
@@ -479,12 +493,14 @@ export const App: React.FC = () => {
             creatureInputs={creatureInputs}
             subAgeBand={session.subAgeBand}
             formVariant={session.formVariant}
+            pacingMode={pacingMode}
             sensorySettings={session.sensorySettingsFinal}
             onComplete={(t) => handleCompleteTrials('G3_TOM', t)}
           />
         ) : (
           <SocialGeoMotorGame
             creatureInputs={creatureInputs}
+            pacingMode={pacingMode}
             sensorySettings={session.sensorySettingsFinal}
             onSamplesObserved={handleSamplesObserved}
             onComplete={handleCompleteGame4}
@@ -492,7 +508,6 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* Calm Breathing Pause Overlay */}
       {pauseOpen ? (
         <div className="ak-modal-backdrop" role="dialog" aria-modal="true" aria-label="Pausa de calma">
           <div className="ak-modal" style={{ alignItems: 'center', textAlign: 'center' }}>
@@ -508,7 +523,6 @@ export const App: React.FC = () => {
         </div>
       ) : null}
 
-      {/* Age-Resilient Adult Gate (Zero clinical scores ever shown) */}
       {parentGateOpen ? (
         <ParentalExportGate
           session={session}
@@ -520,6 +534,7 @@ export const App: React.FC = () => {
             sexAssigned: RawSessionPayload['sexAssigned'];
             subAgeBand: SubAgeBand;
             formVariant: FormVariant;
+            pacingMode: SessionPacingMode;
           }) =>
             setSession((prev) => ({
               ...prev,
@@ -528,6 +543,7 @@ export const App: React.FC = () => {
               sexAssigned: u.sexAssigned,
               subAgeBand: u.subAgeBand,
               formVariant: u.formVariant,
+              pacingMode: u.pacingMode,
             }))
           }
           onTogglePilotAssent={(enabled) =>

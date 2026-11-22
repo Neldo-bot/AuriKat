@@ -6,7 +6,7 @@ import {
   sealEnvelopeWithPassphrase,
   shareOrDownloadEnvelopeText,
 } from '@aurikat/clinical-envelope';
-import type { FormVariant, RawSessionPayload, SubAgeBand } from '@aurikat/core-engine';
+import type { FormVariant, RawSessionPayload, SessionPacingMode, SubAgeBand } from '@aurikat/core-engine';
 
 interface ParentalExportGateProps {
   session: RawSessionPayload;
@@ -18,6 +18,7 @@ interface ParentalExportGateProps {
     sexAssigned: RawSessionPayload['sexAssigned'];
     subAgeBand: SubAgeBand;
     formVariant: FormVariant;
+    pacingMode: SessionPacingMode;
   }) => void;
   onTogglePilotAssent: (enabled: boolean) => void;
   onSaveClinicianLock: (lockCode: string) => void;
@@ -89,6 +90,7 @@ export const ParentalExportGate: React.FC<ParentalExportGateProps> = ({
   const [ageMonths, setAgeMonths] = useState(String(session.ageMonths));
   const [sexAssigned, setSexAssigned] = useState<RawSessionPayload['sexAssigned']>(session.sexAssigned);
   const [formVariant, setFormVariant] = useState<FormVariant>(session.formVariant);
+  const [pacingMode, setPacingMode] = useState<SessionPacingMode>(session.pacingMode ?? 'clinical_full');
 
   // Mode A vs Mode B export state
   const [exportMode, setExportMode] = useState<'A' | 'B'>(savedClinicianLockCode ? 'B' : 'A');
@@ -118,6 +120,7 @@ export const ParentalExportGate: React.FC<ParentalExportGateProps> = ({
       sexAssigned,
       subAgeBand: band,
       formVariant,
+      pacingMode,
     });
     return { cleanId, parsedAge, band };
   };
@@ -134,6 +137,7 @@ export const ParentalExportGate: React.FC<ParentalExportGateProps> = ({
         sexAssigned,
         subAgeBand: band,
         formVariant,
+        pacingMode,
         exportedAtIso: new Date().toISOString(),
       };
 
@@ -241,6 +245,19 @@ export const ParentalExportGate: React.FC<ParentalExportGateProps> = ({
                 >
                   <option value="A">Forma A</option>
                   <option value="B">Forma B</option>
+                </select>
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ fontSize: '0.84rem', fontWeight: 700 }}>
+                  Duración / Ritmo de los 4 Minijuegos
+                </label>
+                <select
+                  className="ak-input"
+                  value={pacingMode}
+                  onChange={(e) => setPacingMode(e.target.value as SessionPacingMode)}
+                >
+                  <option value="clinical_full">Modo Completo (Recomendado para sesiones completas)</option>
+                  <option value="quick_demo">Modo Prueba Rápida (Mitad de turnos para demostración ágil)</option>
                 </select>
               </div>
             </div>

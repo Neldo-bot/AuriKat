@@ -1,4 +1,5 @@
 import type {
+  CozyPetNeeds,
   DeviceTelemetryMeta,
   EmaEntry,
   GameId,
@@ -7,6 +8,7 @@ import type {
   RawSessionPayload,
   SensoryAdjustmentEvent,
   SensoryCalmSettings,
+  SessionPacingMode,
   StrokeRecord,
   SubAgeBand,
   TabletPosture,
@@ -139,11 +141,57 @@ export function detectDefaultDeviceMeta(imuPort?: IInertialSensorPort): DeviceTe
   };
 }
 
+export const SAFE_NEEDS_FLOOR = 35;
+
+export function createDefaultPetNeeds(nowMs = Date.now()): CozyPetNeeds {
+  return {
+    belly: 84,
+    joy: 88,
+    energy: 90,
+    sleeping: false,
+    lastUpdatedMs: nowMs,
+  };
+}
+
+/**
+ * Applies gentle time-based needs decay with a strict non-punitive floor >= 35% (GAM-01 SDT/RITEC-8).
+ * While sleeping, energy gently recharges up to 100.
+ */
+export function applyGentleNeedsDecay(
+  needs: CozyPetNeeds | undefined,
+  nowMs = Date.now(),
+): CozyPetNeeds {
+  const base = needs ?? createDefaultPetNeeds(nowMs);
+  const elapsedHours = Math.max(0, (nowMs - base.lastUpdatedMs) / (1000 * 60 * 60));
+  if (elapsedHours < 0.01) {
+    return {
+      ...base,
+      belly: Math.max(SAFE_NEEDS_FLOOR, Math.min(100, Math.round(base.belly))),
+      joy: Math.max(SAFE_NEEDS_FLOOR, Math.min(100, Math.round(base.joy))),
+      energy: Math.max(SAFE_NEEDS_FLOOR, Math.min(100, Math.round(base.energy))),
+    };
+  }
+  const belly = Math.max(SAFE_NEEDS_FLOOR, Math.min(100, Math.round(base.belly - elapsedHours * 6)));
+  const joy = Math.max(SAFE_NEEDS_FLOOR, Math.min(100, Math.round(base.joy - elapsedHours * 5)));
+  const energy = base.sleeping
+    ? Math.max(SAFE_NEEDS_FLOOR, Math.min(100, Math.round(base.energy + elapsedHours * 18)))
+    : Math.max(SAFE_NEEDS_FLOOR, Math.min(100, Math.round(base.energy - elapsedHours * 4)));
+
+  return {
+    belly,
+    joy,
+    energy,
+    sleeping: base.sleeping,
+    lastUpdatedMs: nowMs,
+  };
+}
+
 export function createInitialSessionPayload(options?: {
   participantPseudoId?: string;
   ageMonths?: number;
   subAgeBand?: SubAgeBand;
   formVariant?: 'A' | 'B';
+  pacingMode?: SessionPacingMode;
 }): RawSessionPayload {
   const ageMonths = options?.ageMonths ?? 72; // 6 years default (within 4-8y Beta)
   const subAgeBand: SubAgeBand = options?.subAgeBand ?? (ageMonths < 72 ? '4_5' : '6_8');
@@ -159,6 +207,7 @@ export function createInitialSessionPayload(options?: {
     ageModule: 'm2_4_8',
     subAgeBand,
     formVariant: options?.formVariant ?? 'A',
+    pacingMode: options?.pacingMode ?? 'clinical_full',
     createdAtIsoYear: new Date().getFullYear(),
     exportedAtIso: new Date().toISOString(),
     assent: { shown: false, accepted: true },
@@ -171,6 +220,7 @@ export function createInitialSessionPayload(options?: {
       unlockedAccessories: ['au_charm', 'leaf_hat'],
       unlockedStickers: ['st_star'],
       sharedDaysCount: 1,
+      petNeeds: createDefaultPetNeeds(),
     },
     sensorySettingsFinal: {
       muted: false,

@@ -17,7 +17,14 @@ export type SoundCueType =
   | 'neutral_soft_fail'
   | 'bubble_pop'
   | 'gear_chime'
-  | 'celebrate_chime';
+  | 'celebrate_chime'
+  | 'chime_pentatonic_1'
+  | 'chime_pentatonic_2'
+  | 'chime_pentatonic_3'
+  | 'teapot_puff'
+  | 'water_bubble'
+  | 'purr_soft'
+  | 'bloom_sparkle';
 
 export interface IAudioPort {
   unlock(): void;
@@ -183,6 +190,35 @@ class GentleSoundEngineImpl implements IAudioPort {
         this.playTone(330, 0, 0.14, 0.3, 'sine');
         this.playTone(392, 0.11, 0.15, 0.3, 'sine');
         this.playTone(523, 0.22, 0.24, 0.34, 'sine');
+        break;
+      case 'chime_pentatonic_1':
+        this.playTone(392, 0, 0.28, 0.28, 'sine');
+        this.playTone(587, 0.08, 0.22, 0.22, 'triangle');
+        break;
+      case 'chime_pentatonic_2':
+        this.playTone(440, 0, 0.28, 0.28, 'sine');
+        this.playTone(659, 0.08, 0.22, 0.22, 'triangle');
+        break;
+      case 'chime_pentatonic_3':
+        this.playTone(523, 0, 0.3, 0.28, 'sine');
+        this.playTone(392, 0.09, 0.24, 0.22, 'triangle');
+        break;
+      case 'teapot_puff':
+        this.playTone(294, 0, 0.18, 0.24, 'sine');
+        this.playTone(349, 0.1, 0.22, 0.22, 'sine');
+        break;
+      case 'water_bubble':
+        this.playTone(349, 0, 0.1, 0.26, 'sine');
+        this.playTone(466, 0.07, 0.13, 0.28, 'sine');
+        break;
+      case 'purr_soft':
+        this.playTone(262, 0, 0.22, 0.24, 'triangle');
+        this.playTone(294, 0.15, 0.24, 0.24, 'triangle');
+        break;
+      case 'bloom_sparkle':
+        this.playTone(392, 0, 0.12, 0.26, 'sine');
+        this.playTone(494, 0.08, 0.14, 0.28, 'sine');
+        this.playTone(587, 0.16, 0.18, 0.3, 'sine');
         break;
     }
   }

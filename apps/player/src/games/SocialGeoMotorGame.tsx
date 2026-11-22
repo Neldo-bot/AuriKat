@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildStrokeRecord,
   encodeSensoryBitmask,
@@ -8,13 +8,16 @@ import {
   type CreatureViewModelInputs,
   type PointerSample,
   type SensoryCalmSettings,
+  type SessionPacingMode,
   type StrokeRecord,
   type TrialRecord,
 } from '@aurikat/core-engine';
+import { GuidingHandOverlay } from '../components/GuidingHandOverlay.js';
 import { ProceduralCreatureRig } from '../components/ProceduralCreatureRig.js';
 
 interface SocialGeoMotorGameProps {
   creatureInputs: CreatureViewModelInputs;
+  pacingMode?: SessionPacingMode;
   sensorySettings: SensoryCalmSettings;
   onSamplesObserved: (samples: PointerSample[], coalescedSupported: boolean) => void;
   onComplete: (result: {
@@ -31,7 +34,7 @@ interface GuideTrailSpec {
   pathD: string;
 }
 
-const GUIDE_TRAILS: GuideTrailSpec[] = [
+const ALL_GUIDE_TRAILS: GuideTrailSpec[] = [
   { shape: 'line_h', start: { x: 80, y: 150 }, target: { x: 460, y: 150 }, pathD: 'M 80 150 L 460 150' },
   { shape: 'line_h', start: { x: 460, y: 150 }, target: { x: 80, y: 150 }, pathD: 'M 460 150 L 80 150' },
   { shape: 'arc_up', start: { x: 80, y: 185 }, target: { x: 460, y: 185 }, pathD: 'M 80 185 Q 270 55 460 185' },
@@ -46,24 +49,32 @@ const CANVAS_W = 540;
 const CANVAS_H = 300;
 
 /**
- * Game 4: «Jardín de Burbujas y Estrellas» (CLIN-06 + CLIN-07 + IC-1 + IC-2)
- * - Phase A: Strictly iso-salient Social vs. Geometric exploratory choice with midpoint L<->R swap
- * - Phase B: 8 guided 2D drag trails with coalesced pointer capture, finger-lift tolerance & Savitzky-Golay kinematics
+ * Game 4 v2.1: «4. Burbujas y Cometas» (CLIN-06 + CLIN-07 + IC-1 + IC-2)
+ * - Phase A: Two living bubble gardens (3 floating social AuriKat bubbles vs. 3 floating geometric mandala bubbles, strictly iso-salient)
+ * - Phase B: Guided comet drag trail with GuidingHandOverlay on first trail, sparkling comet tail, and live AuriKat portrait tracking the finger
  */
 export const SocialGeoMotorGame: React.FC<SocialGeoMotorGameProps> = ({
   creatureInputs,
+  pacingMode = 'clinical_full',
   sensorySettings,
   onSamplesObserved,
   onComplete,
 }) => {
+  const isQuick = pacingMode === 'quick_demo';
+  const phaseATargetTaps = isQuick ? 6 : 12;
+  const guideTrails = useMemo(
+    () => (isQuick ? ALL_GUIDE_TRAILS.slice(0, 4) : ALL_GUIDE_TRAILS),
+    [isQuick],
+  );
+
   const [stage, setStage] = useState<'phase_a' | 'phase_b'>('phase_a');
   const [phaseACount, setPhaseACount] = useState(0);
   const [pulseSide, setPulseSide] = useState<'social' | 'geometric' | null>(null);
 
-  // Phase B drag state
   const [trailIdx, setTrailIdx] = useState(0);
   const [activePts, setActivePts] = useState<{ x: number; y: number }[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [showDragHint, setShowDragHint] = useState(true);
 
   const trialsRef = useRef<TrialRecord[]>([]);
   const strokesRef = useRef<StrokeRecord[]>([]);
@@ -75,9 +86,7 @@ export const SocialGeoMotorGame: React.FC<SocialGeoMotorGameProps> = ({
   const rhythmicIntervalsRef = useRef<number[]>([]);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
-  // Midpoint Left <-> Right swap after 6 taps in Phase A (total 12 iso-salient interactions)
-  const PHASE_A_TARGET_TAPS = 12;
-  const swapped = phaseACount >= PHASE_A_TARGET_TAPS / 2;
+  const swapped = phaseACount >= phaseATargetTaps / 2;
 
   useEffect(() => {
     trialShownAtRef.current = performance.now();
@@ -94,10 +103,10 @@ export const SocialGeoMotorGame: React.FC<SocialGeoMotorGameProps> = ({
     }
     lastTapAtRef.current = now;
 
-    // IC-1 Iso-salience: identical audio cue parameters & identical pulse feedback for both sides!
+    // IC-1 Iso-salience: identical audio parameters & identical visual pulse
     gentleSoundEngine.playCue(channel === 'social' ? 'bubble_pop' : 'gear_chime');
     setPulseSide(channel);
-    window.setTimeout(() => setPulseSide(null), 180);
+    window.setTimeout(() => setPulseSide(null), 190);
 
     const nextCount = phaseACount + 1;
     trialsRef.current.push({
@@ -118,12 +127,12 @@ export const SocialGeoMotorGame: React.FC<SocialGeoMotorGameProps> = ({
     trialShownAtRef.current = now;
     setPhaseACount(nextCount);
 
-    if (nextCount >= PHASE_A_TARGET_TAPS) {
+    if (nextCount >= phaseATargetTaps) {
       window.setTimeout(() => setStage('phase_b'), 380);
     }
   };
 
-  const currentGuide = GUIDE_TRAILS[trailIdx];
+  const currentGuide = guideTrails[trailIdx];
 
   const toCanvasCoords = (ev: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
@@ -143,6 +152,7 @@ export const SocialGeoMotorGame: React.FC<SocialGeoMotorGameProps> = ({
 
   const handlePointerDown = (ev: React.PointerEvent<SVGSVGElement>) => {
     ev.currentTarget.setPointerCapture(ev.pointerId);
+    setShowDragHint(false);
     const scaled = toCanvasCoords(ev);
     if (!scaled || scaled.length === 0) return;
 
@@ -161,10 +171,9 @@ export const SocialGeoMotorGame: React.FC<SocialGeoMotorGameProps> = ({
     samplesBufferRef.current.push(...scaled);
     setActivePts((prev) => [...prev, ...scaled.map((s) => ({ x: s.x, y: s.y }))]);
 
-    // Check if child reached the star target cleanly
     const last = scaled[scaled.length - 1];
     const dist = Math.hypot(last.x - currentGuide.target.x, last.y - currentGuide.target.y);
-    if (dist <= 44 && samplesBufferRef.current.length >= 6) {
+    if (dist <= 46 && samplesBufferRef.current.length >= 6) {
       finishCurrentStroke();
     }
   };
@@ -172,12 +181,11 @@ export const SocialGeoMotorGame: React.FC<SocialGeoMotorGameProps> = ({
   const handlePointerUp = () => {
     if (!isDrawing) return;
     setIsDrawing(false);
-    // Pediatric finger-lift tolerance (IC-1 / Anthony 2012): do NOT punish/reset trail if child lifts mid-drag!
     const buf = samplesBufferRef.current;
     if (buf.length >= 4) {
       const last = buf[buf.length - 1];
       const dist = Math.hypot(last.x - currentGuide.target.x, last.y - currentGuide.target.y);
-      if (dist <= 62) {
+      if (dist <= 64) {
         finishCurrentStroke();
       } else {
         touchLiftsRef.current += 1;
@@ -222,7 +230,7 @@ export const SocialGeoMotorGame: React.FC<SocialGeoMotorGameProps> = ({
     });
 
     gentleSoundEngine.playCue('tap_soft');
-    if (trailIdx + 1 >= GUIDE_TRAILS.length) {
+    if (trailIdx + 1 >= guideTrails.length) {
       gentleSoundEngine.playCue('celebrate_chime');
       onComplete({
         trials: trialsRef.current,
@@ -234,92 +242,184 @@ export const SocialGeoMotorGame: React.FC<SocialGeoMotorGameProps> = ({
     }
   };
 
-  const renderSocialTile = (side: 'left' | 'right') => (
+  // Phase A: Iso-salient Social vs. Geometric Bubble Ponds (3 floating bubbles each!)
+  const renderSocialBubbleGarden = (side: 'left' | 'right') => (
     <button
       type="button"
       className="ak-primary-target"
       style={{
-        minHeight: 200,
+        minHeight: 220,
         width: '100%',
         background: 'var(--ak-surface-raised)',
-        transform: pulseSide === 'social' ? 'scale(0.96)' : undefined,
+        transform: pulseSide === 'social' ? 'scale(0.95)' : undefined,
+        position: 'relative',
+        overflow: 'hidden',
       }}
       onClick={() => handlePhaseATap('social', side)}
-      aria-label="Burbujas con AuriKat"
+      aria-label="Jardín de burbujas con AuriKat"
     >
-      <ProceduralCreatureRig
-        inputs={{ ...creatureInputs, emotion: 'happy', action: 'wave', motionScale: sensorySettings.motionScale }}
-        size={120}
-      />
+      <div className="ak-row" style={{ justifyContent: 'center', gap: 10 }}>
+        {(['happy', 'surprised', 'calm'] as const).map((emo, i) => (
+          <div
+            key={emo}
+            style={{
+              width: i === 0 ? 96 : 68,
+              height: i === 0 ? 96 : 68,
+              borderRadius: '50%',
+              background: 'radial-gradient(circle at 30% 30%, #FCFDFB, var(--ak-accent-soft))',
+              border: '2.5px solid var(--ak-accent)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <ProceduralCreatureRig
+              inputs={{
+                ...creatureInputs,
+                emotion: emo,
+                action: 'wave',
+                motionScale: sensorySettings.motionScale,
+              }}
+              size={i === 0 ? 78 : 54}
+            />
+          </div>
+        ))}
+      </div>
     </button>
   );
 
-  const renderGeoTile = (side: 'left' | 'right') => (
+  const renderGeoBubbleGarden = (side: 'left' | 'right') => (
     <button
       type="button"
       className="ak-primary-target"
       style={{
-        minHeight: 200,
+        minHeight: 220,
         width: '100%',
         background: 'var(--ak-surface-raised)',
-        transform: pulseSide === 'geometric' ? 'scale(0.96)' : undefined,
+        transform: pulseSide === 'geometric' ? 'scale(0.95)' : undefined,
+        position: 'relative',
+        overflow: 'hidden',
       }}
       onClick={() => handlePhaseATap('geometric', side)}
-      aria-label="Engranajes geométricos"
+      aria-label="Jardín de burbujas geométricas"
     >
-      <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
-        <g
-          transform="translate(60,60)"
-          style={{
-            transformOrigin: '60px 60px',
-            animation: sensorySettings.motionScale > 0 ? 'akFloat 3.6s ease-in-out infinite' : 'none',
-          }}
-        >
-          <circle cx="0" cy="0" r="38" fill="none" stroke="var(--ak-accent)" strokeWidth="8" strokeDasharray="14 10" />
-          <polygon points="0,-24 21,12 -21,12" fill="none" stroke="var(--ak-au-gold)" strokeWidth="4" />
-          <circle cx="0" cy="0" r="10" fill="var(--ak-accent)" />
-        </g>
-      </svg>
+      <div className="ak-row" style={{ justifyContent: 'center', gap: 10 }}>
+        {[0, 1, 2].map((i) => {
+          const sz = i === 0 ? 96 : 68;
+          return (
+            <div
+              key={i}
+              style={{
+                width: sz,
+                height: sz,
+                borderRadius: '50%',
+                background: 'radial-gradient(circle at 30% 30%, #FCFDFB, var(--ak-accent-soft))',
+                border: '2.5px solid var(--ak-accent)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <svg width={sz * 0.78} height={sz * 0.78} viewBox="0 0 100 100" aria-hidden="true">
+                <g
+                  transform="translate(50,50)"
+                  style={{
+                    transformOrigin: '50px 50px',
+                    animation: sensorySettings.motionScale > 0 ? 'akFloat 3.6s ease-in-out infinite' : 'none',
+                  }}
+                >
+                  <circle cx="0" cy="0" r="34" fill="none" stroke="var(--ak-accent)" strokeWidth="7" strokeDasharray="12 8" />
+                  <polygon points="0,-24 21,12 -21,12" fill="none" stroke="var(--ak-au-gold)" strokeWidth="4" />
+                  <polygon points="0,24 21,-12 -21,-12" fill="none" stroke="var(--ak-au-gold)" strokeWidth="4" />
+                  <circle cx="0" cy="0" r="8" fill="var(--ak-accent)" />
+                </g>
+              </svg>
+            </div>
+          );
+        })}
+      </div>
     </button>
   );
 
   if (stage === 'phase_a') {
     return (
       <section className="ak-stage-card" aria-label="Jardín de Burbujas — Fase A">
-        <div className="ak-progress-dots" aria-hidden="true">
-          {Array.from({ length: PHASE_A_TARGET_TAPS }, (_, i) => (
-            <span key={i} className="ak-dot" data-state={i < phaseACount ? 'done' : i === phaseACount ? 'current' : 'todo'} />
-          ))}
+        <div className="ak-game-microheader">
+          <span className="ak-phase-pill">🫧 Tocá las burbujas que más te gusten</span>
+          <div className="ak-progress-dots" aria-hidden="true">
+            {Array.from({ length: phaseATargetTaps }, (_, i) => (
+              <span key={i} className="ak-dot" data-state={i < phaseACount ? 'done' : i === phaseACount ? 'current' : 'todo'} />
+            ))}
+          </div>
         </div>
 
-        {/* Strictly iso-salient 2-column choice (swaps left <-> right at midpoint) */}
         <div
           style={{
             display: 'grid',
             gridTemplateColumns: '1fr 1fr',
             gap: 20,
             width: '100%',
-            maxWidth: 620,
+            maxWidth: 640,
           }}
         >
-          {swapped ? renderGeoTile('left') : renderSocialTile('left')}
-          {swapped ? renderSocialTile('right') : renderGeoTile('right')}
+          {swapped ? renderGeoBubbleGarden('left') : renderSocialBubbleGarden('left')}
+          {swapped ? renderSocialBubbleGarden('right') : renderGeoBubbleGarden('right')}
         </div>
       </section>
     );
   }
 
+  const lastPt = activePts[activePts.length - 1] ?? currentGuide.start;
   const polylinePts = activePts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const lookNormX = Math.max(-1, Math.min(1, (lastPt.x - CANVAS_W / 2) / (CANVAS_W / 2)));
+  const lookNormY = Math.max(-1, Math.min(1, (lastPt.y - CANVAS_H / 2) / (CANVAS_H / 2)));
 
   return (
-    <section className="ak-stage-card" aria-label="Jardín de Estrellas — Trazos">
-      <div className="ak-progress-dots" aria-hidden="true">
-        {GUIDE_TRAILS.map((_, i) => (
-          <span key={i} className="ak-dot" data-state={i < trailIdx ? 'done' : i === trailIdx ? 'current' : 'todo'} />
-        ))}
+    <section className="ak-stage-card" aria-label="Sendero de Cometas — Fase B">
+      <div className="ak-game-microheader">
+        <span className="ak-phase-pill">☄️ Llevá la estrella-cometa hasta el plato de AuriKat</span>
+        <div className="ak-row" style={{ gap: 10 }}>
+          <div className="ak-progress-dots" aria-hidden="true">
+            {guideTrails.map((_, i) => (
+              <span key={i} className="ak-dot" data-state={i < trailIdx ? 'done' : i === trailIdx ? 'current' : 'todo'} />
+            ))}
+          </div>
+          <button
+            type="button"
+            className="ak-primary-target"
+            style={{ minHeight: 46, minWidth: 112, padding: '6px 14px', flexDirection: 'row' }}
+            onClick={() => setShowDragHint(true)}
+          >
+            <span>↻ Ver ejemplo</span>
+          </button>
+        </div>
       </div>
 
-      <div className="ak-touch-canvas">
+      {/* Live Companion Tracking the Child's Finger! */}
+      <div className="ak-row" style={{ gap: 12 }}>
+        <ProceduralCreatureRig
+          inputs={{
+            ...creatureInputs,
+            lookX: lookNormX,
+            lookY: lookNormY,
+            emotion: isDrawing ? 'surprised' : 'happy',
+          }}
+          size={92}
+        />
+      </div>
+
+      <div className="ak-touch-canvas" style={{ position: 'relative' }}>
+        {(trailIdx === 0 && showDragHint && !isDrawing) && (
+          <GuidingHandOverlay
+            mode="drag"
+            fromX="20%"
+            fromY="50%"
+            toX="80%"
+            toY="50%"
+            label="Arrastrá la estrella ★ → 🥣"
+          />
+        )}
+
         <svg
           ref={svgRef}
           viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`}
@@ -329,61 +429,65 @@ export const SocialGeoMotorGame: React.FC<SocialGeoMotorGameProps> = ({
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
         >
-          {/* Dashed guide path */}
+          {/* Pebble Path Guide */}
           <path
             d={currentGuide.pathD}
             fill="none"
             stroke="var(--ak-accent-soft)"
-            strokeWidth="22"
+            strokeWidth="28"
             strokeLinecap="round"
           />
           <path
             d={currentGuide.pathD}
             fill="none"
             stroke="var(--ak-accent)"
-            strokeWidth="4"
-            strokeDasharray="10 10"
+            strokeWidth="4.5"
+            strokeDasharray="10 12"
             strokeLinecap="round"
-            opacity="0.7"
+            opacity="0.72"
           />
 
-          {/* Live finger trail */}
+          {/* Sparkling Comet Tail */}
           {activePts.length > 1 && (
-            <polyline
-              points={polylinePts}
-              fill="none"
-              stroke="var(--ak-au-gold)"
-              strokeWidth="10"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            <>
+              <polyline
+                points={polylinePts}
+                fill="none"
+                stroke="var(--ak-au-gold)"
+                strokeWidth="12"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.88"
+              />
+              {activePts
+                .filter((_, i) => i % 4 === 0)
+                .slice(-8)
+                .map((pt, i) => (
+                  <circle key={i} cx={pt.x} cy={pt.y} r={3 + (i % 3)} fill="#FAF0CA" />
+                ))}
+            </>
           )}
 
-          {/* Start luminous star */}
-          <circle
-            cx={currentGuide.start.x}
-            cy={currentGuide.start.y}
-            r="26"
-            fill="var(--ak-au-gold)"
-            stroke="#2B3330"
-            strokeWidth="2.8"
-          />
-          <text x={currentGuide.start.x} y={currentGuide.start.y + 8} textAnchor="middle" fontSize="24" fill="#FAF9F5">
-            ★
-          </text>
-
-          {/* Target companion food bowl */}
+          {/* Target Food Bowl */}
           <circle
             cx={currentGuide.target.x}
             cy={currentGuide.target.y}
-            r="32"
+            r="34"
             fill="var(--ak-accent)"
             stroke="#2B3330"
-            strokeWidth="2.8"
+            strokeWidth="3"
           />
-          <text x={currentGuide.target.x} y={currentGuide.target.y + 8} textAnchor="middle" fontSize="22" fill="#FAF9F5">
+          <text x={currentGuide.target.x} y={currentGuide.target.y + 9} textAnchor="middle" fontSize="24" fill="#FAF9F5">
             🥣
           </text>
+
+          {/* Draggable Comet Star (moves with finger!) */}
+          <g transform={`translate(${lastPt.x.toFixed(1)}, ${lastPt.y.toFixed(1)})`}>
+            <circle cx="0" cy="0" r="28" fill="var(--ak-au-gold)" stroke="#2B3330" strokeWidth="3" />
+            <text x="0" y="9" textAnchor="middle" fontSize="26" fill="#FAF9F5">
+              ★
+            </text>
+          </g>
         </svg>
       </div>
     </section>
