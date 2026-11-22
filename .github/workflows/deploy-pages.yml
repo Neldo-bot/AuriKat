@@ -2,7 +2,7 @@ name: Build, Audit & Deploy AuriKat to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/game4-lab]
   workflow_dispatch:
 
 permissions:

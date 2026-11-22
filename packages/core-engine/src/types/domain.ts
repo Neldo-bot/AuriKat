@@ -56,7 +56,11 @@ export type GameId =
   | 'G2_DCCS'
   | 'G3_TOM'
   | 'G4A_PREF'
-  | 'G4B_MOTOR';
+  | 'G4B_MOTOR'
+  | 'G4_SENSORY_SOCIAL'
+  | 'G4_DETAIL_NAVON';
+
+export type Game4LabVariant = 'sensory_social' | 'detail_navon' | 'classic_bubbles';
 
 export type TrialErrorCategory =
   | 'none'

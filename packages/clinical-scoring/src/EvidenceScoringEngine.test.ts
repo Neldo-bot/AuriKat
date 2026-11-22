@@ -77,4 +77,31 @@ describe('EvidenceScoringEngine & ClinicalExporters (CLIN-02 / CLIN-12 / SEC-04)
     expect(serialized).toContain('QuestionnaireResponse');
     expect(serialized).toContain('DiagnosticReport');
   });
+
+  it('computes Game 4A (Sensory/Social Day SP-2+CAST) and Game 4B (Navon/CEFT Detective) breakdowns and Clinical Guide', () => {
+    const repPriority = evaluateClinicalSession(priority);
+    expect(repPriority.sensorySocialBreakdown.totalScoredScenes).toBe(5);
+    expect(repPriority.sensorySocialBreakdown.sensoryCalmAvoidingRatio).toBe(1);
+    expect(repPriority.sensorySocialBreakdown.solitaryOrderPlayRatio).toBe(1);
+    expect(repPriority.sensorySocialBreakdown.routineSamenessRatio).toBe(1);
+    expect(repPriority.detailNavonBreakdown.localPreferenceRatio).toBe(1);
+    expect(repPriority.detailNavonBreakdown.detailSearchAccuracy).toBe(1);
+    expect(repPriority.clinicalGuide.strengths.length).toBeGreaterThanOrEqual(1);
+    expect(repPriority.clinicalGuide.clinicalHypothesesToExplore.length).toBeGreaterThanOrEqual(2);
+    expect(repPriority.clinicalGuide.caregiverInterviewPrompts.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('enables canShowPartialPreview when a single clean Game 4 prototype is exported for testing', () => {
+    const singleGameSession = {
+      ...typical,
+      trials: typical.trials.filter((t) => t.gameId === 'G4_SENSORY_SOCIAL'),
+      strokes: [],
+    };
+    const repSingle = evaluateClinicalSession(singleGameSession);
+    expect(repSingle.validityStatus).toBe('INDETERMINATE');
+    expect(repSingle.canShowPartialPreview).toBe(true);
+    const partialSensory = repSingle.partialDomainsPreview.find((d) => d.domainId === 'sensory_modulation')!;
+    expect(partialSensory.observationIndex).not.toBeNull();
+  });
 });
+

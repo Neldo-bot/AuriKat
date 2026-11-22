@@ -27,33 +27,49 @@ export const SensoryCalmBar: React.FC<SensoryCalmBarProps> = ({
   onUnlockParentalGate,
 }) => {
   const [holdPct, setHoldPct] = useState(0);
+  const [showHoldHint, setShowHoldHint] = useState(false);
   const timerRef = useRef<number | null>(null);
+  const hintTimerRef = useRef<number | null>(null);
   const startRef = useRef<number>(0);
+  const unlockedRef = useRef<boolean>(false);
 
   const startHold = () => {
     startRef.current = performance.now();
+    unlockedRef.current = false;
     if (timerRef.current) window.clearInterval(timerRef.current);
     timerRef.current = window.setInterval(() => {
       const elapsed = performance.now() - startRef.current;
-      const pct = Math.min(100, Math.round((elapsed / 2500) * 100));
+      const pct = Math.min(100, Math.round((elapsed / 1500) * 100));
       setHoldPct(pct);
       if (pct >= 100) {
-        stopHold();
+        unlockedRef.current = true;
+        if (timerRef.current) {
+          window.clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        setHoldPct(0);
+        setShowHoldHint(false);
         onUnlockParentalGate();
       }
-    }, 60);
+    }, 45);
   };
 
-  const stopHold = () => {
+  const stopHold = (showHintIfShort = false) => {
+    const elapsed = performance.now() - startRef.current;
     if (timerRef.current) {
       window.clearInterval(timerRef.current);
       timerRef.current = null;
     }
     setHoldPct(0);
+    if (showHintIfShort && !unlockedRef.current && elapsed > 0 && elapsed < 1450) {
+      setShowHoldHint(true);
+      if (hintTimerRef.current) window.clearTimeout(hintTimerRef.current);
+      hintTimerRef.current = window.setTimeout(() => setShowHoldHint(false), 2800);
+    }
   };
 
   return (
-    <header className="ak-topbar" aria-label="Barra de calma sensorial">
+    <header className="ak-topbar" aria-label="Barra de calma sensorial" style={{ position: 'relative' }}>
       <div className="ak-row">
         {showHomeButton ? (
           <button
@@ -152,24 +168,57 @@ export const SensoryCalmBar: React.FC<SensoryCalmBarProps> = ({
           </svg>
         </button>
 
-        {/* Discreet Hold-to-Open Adult Area */}
+        {/* Visible Labeled Hold-1.5s Adult & Export Button */}
         <button
           type="button"
           className="ak-parent-hold"
           onPointerDown={startHold}
-          onPointerUp={stopHold}
-          onPointerLeave={stopHold}
-          onPointerCancel={stopHold}
-          aria-label="Área para adultos (mantener pulsado 3 segundos)"
-          title="Adultos: mantener pulsado 3s"
+          onPointerUp={() => stopHold(true)}
+          onPointerLeave={() => stopHold(false)}
+          onPointerCancel={() => stopHold(false)}
+          aria-label="Adultos y Exportar (mantener pulsado 1.5 segundos)"
+          title="Adultos / Exportar: mantener apretado 1.5s"
+          style={{
+            width: 'auto',
+            minWidth: 148,
+            padding: '0 13px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            fontWeight: 800,
+            fontSize: '0.8rem',
+          }}
         >
           <div className="ak-parent-hold-fill" style={{ height: `${holdPct}%` }} />
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'relative', zIndex: 1 }}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'relative', zIndex: 1 }}>
             <rect x="5" y="11" width="14" height="9" rx="2" />
             <path d="M8 11V8a4 4 0 0 1 8 0v3" />
           </svg>
+          <span style={{ position: 'relative', zIndex: 1 }}>Adultos / Exportar</span>
         </button>
       </div>
+
+      {showHoldHint ? (
+        <div
+          role="status"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            right: 12,
+            background: 'var(--ak-ink)',
+            color: '#FFFDF8',
+            padding: '8px 14px',
+            borderRadius: 12,
+            fontSize: '0.8rem',
+            fontWeight: 700,
+            boxShadow: '0 8px 20px rgba(0,0,0,0.16)',
+            zIndex: 40,
+          }}
+        >
+          🔒 Mantené apretado 1.5 seg. para abrir Adultos / Exportar
+        </div>
+      ) : null}
     </header>
   );
 };

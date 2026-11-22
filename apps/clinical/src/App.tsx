@@ -19,6 +19,7 @@ import {
   type ExternalBetaScores,
 } from '@aurikat/clinical-scoring';
 import { BetaValidationPanel } from './components/BetaValidationPanel.js';
+import { ClinicalInterpretationGuide } from './components/ClinicalInterpretationGuide.js';
 import { DomainRadarChart } from './components/DomainRadarChart.js';
 import { KinematicsInspector } from './components/KinematicsInspector.js';
 import { LongitudinalMoodChart } from './components/LongitudinalMoodChart.js';
@@ -42,12 +43,15 @@ export const App: React.FC = () => {
   const [qrSvg, setQrSvg] = useState<string>('');
   const [copyFeedback, setCopyFeedback] = useState('');
 
-  // Importer state (.aurikat.txt Mode A or Mode B)
+  // Importer state (.aurikat.txt Mode A or Mode B + Clipboard Paste)
   const [pendingEnvelopeText, setPendingEnvelopeText] = useState<string>('');
   const [pendingEnvelopeMode, setPendingEnvelopeMode] = useState<'passphrase_aes_gcm' | 'ecdh_p256_hybrid' | null>(null);
   const [importPassphrase, setImportPassphrase] = useState('');
   const [importError, setImportError] = useState('');
   const [importSuccess, setImportSuccess] = useState('');
+  const [showPasteBox, setShowPasteBox] = useState(false);
+  const [pastedText, setPastedText] = useState('');
+  const [showPartialPreview, setShowPartialPreview] = useState(true);
 
   // Load or generate local ECDH P-256 keypair on first launch (100% offline, zero cloud!)
   useEffect(() => {
@@ -75,22 +79,19 @@ export const App: React.FC = () => {
 
   const report = useMemo(() => evaluateClinicalSession(activeSession), [activeSession]);
 
-  const handleFileUpload = async (ev: React.ChangeEvent<HTMLInputElement>) => {
-    const file = ev.target.files?.[0];
-    if (!file) return;
+  const processEnvelopeRawText = async (rawText: string) => {
     setImportError('');
     setImportSuccess('');
     try {
-      const text = await file.text();
-      const meta = inspectEnvelopeMetadata(text);
-      setPendingEnvelopeText(text);
-      setPendingEnvelopeMode(meta.mode);
+      const keyMatch = rawText.match(/CLAVE-AURIKAT:\s*([^\r\n]+)/i);
+      const extractedPass = keyMatch ? keyMatch[1].trim() : '';
+      const meta = inspectEnvelopeMetadata(rawText);
 
       // Mode B auto-decrypts immediately if matching local clinician private key!
       if (meta.mode === 'ecdh_p256_hybrid' && keyPair) {
         try {
           const decoded = await openEnvelopeWithClinicianPrivateKey(
-            text,
+            rawText,
             keyPair.privateKeyJwk,
             keyPair.keyId,
           );
@@ -99,18 +100,75 @@ export const App: React.FC = () => {
           setExternalScores(EMPTY_EXTERNAL_SCORES);
           setPendingEnvelopeText('');
           setPendingEnvelopeMode(null);
+          setShowPasteBox(false);
+          setPastedText('');
+          setShowPartialPreview(true);
           setImportSuccess(`Paquete ${decoded.participantPseudoId} descifrado automáticamente con su llave privada (Modo B).`);
           setActiveTab('overview');
+          return;
         } catch {
           setImportError(
             `Este sobre fue sellado para otra llave pública (ID ${meta.clinicianKeyFingerprint ?? 'desconocido'}). Su llave activa es ${keyPair.keyId}.`,
           );
+          return;
         }
       }
+
+      // Mode A with embedded CLAVE-AURIKAT header from 1-click copy auto-decrypts in 1 step!
+      if (meta.mode === 'passphrase_aes_gcm' && extractedPass) {
+        try {
+          const decoded = await openEnvelopeWithPassphrase(rawText, extractedPass);
+          setActiveSession(decoded);
+          setActiveSourceLabel(`Importado (1 clic) — ${decoded.participantPseudoId}`);
+          setExternalScores(EMPTY_EXTERNAL_SCORES);
+          setPendingEnvelopeText('');
+          setPendingEnvelopeMode(null);
+          setImportPassphrase('');
+          setShowPasteBox(false);
+          setPastedText('');
+          setShowPartialPreview(true);
+          setImportSuccess(`✅ Paquete ${decoded.participantPseudoId} descifrado automáticamente desde el portapapeles (AES-256-GCM).`);
+          setActiveTab('overview');
+          return;
+        } catch {
+          // Fall through to manual passphrase input
+        }
+      }
+
+      setPendingEnvelopeText(rawText);
+      setPendingEnvelopeMode(meta.mode);
+      if (extractedPass) setImportPassphrase(extractedPass);
+      setShowPasteBox(false);
+      setPastedText('');
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Archivo .aurikat.txt inválido.');
+      setImportError(err instanceof Error ? err.message : 'Archivo o texto .aurikat.txt inválido.');
     }
+  };
+
+  const handleFileUpload = async (ev: React.ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    await processEnvelopeRawText(text);
     ev.target.value = '';
+  };
+
+  const handleClipboardPasteClick = async () => {
+    setImportError('');
+    setImportSuccess('');
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+        const clip = await navigator.clipboard.readText();
+        if (clip && clip.includes('-----BEGIN AURIKAT ENVELOPE V2-----')) {
+          await processEnvelopeRawText(clip);
+          return;
+        }
+      }
+      setShowPasteBox((v) => !v);
+    } catch {
+      // Browser requested manual paste into textarea
+      setShowPasteBox(true);
+    }
   };
 
   const handleDecryptModeA = async (e: React.FormEvent) => {
@@ -125,6 +183,7 @@ export const App: React.FC = () => {
       setPendingEnvelopeText('');
       setPendingEnvelopeMode(null);
       setImportPassphrase('');
+      setShowPartialPreview(true);
       setImportSuccess(`Paquete ${decoded.participantPseudoId} descifrado y autenticado (AES-256-GCM).`);
       setActiveTab('overview');
     } catch {
@@ -138,6 +197,16 @@ export const App: React.FC = () => {
     setKeyPair(next);
     setCopyFeedback('Nuevo par de claves ECDH P-256 generado y guardado localmente.');
   };
+
+  const displayedDomains =
+    report.validityStatus === 'INDETERMINATE' && report.canShowPartialPreview && showPartialPreview
+      ? report.partialDomainsPreview
+      : report.domains;
+
+  const displayedRadarValidity =
+    report.validityStatus === 'INDETERMINATE' && report.canShowPartialPreview && showPartialPreview
+      ? 'VALID_WITH_CAVEATS'
+      : report.validityStatus;
 
   return (
     <div className="cl-shell">
@@ -163,8 +232,17 @@ export const App: React.FC = () => {
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <label className="cl-btn cl-btn-primary" style={{ cursor: 'pointer' }}>
-            Importar .aurikat.txt
+          <button
+            type="button"
+            className="cl-btn cl-btn-primary"
+            onClick={handleClipboardPasteClick}
+            title="Pegar paquete cifrado copiado desde la app del niño"
+          >
+            📋 Pegar paquete cifrado
+          </button>
+
+          <label className="cl-btn" style={{ cursor: 'pointer', fontWeight: 700 }}>
+            📂 Importar .aurikat.txt
             <input type="file" accept=".txt,.aurikat.txt,text/plain" onChange={handleFileUpload} style={{ display: 'none' }} />
           </label>
 
@@ -179,6 +257,7 @@ export const App: React.FC = () => {
                 setExternalScores(EMPTY_EXTERNAL_SCORES);
                 setImportError('');
                 setImportSuccess('');
+                setShowPasteBox(false);
               }}
             >
               {dc.session.participantPseudoId}
@@ -187,7 +266,40 @@ export const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Mode A Passphrase Prompt if imported envelope is symmetric */}
+      {/* Manual Paste Box if browser requires Ctrl+V */}
+      {showPasteBox && (
+        <div className="cl-card cl-no-print" style={{ borderColor: 'var(--cl-accent)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0 }}>📋 Pegar paquete cifrado desde el portapapeles</h3>
+            <button type="button" className="cl-btn" onClick={() => setShowPasteBox(false)}>
+              Cerrar
+            </button>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--cl-ink-muted)' }}>
+            Pegá aquí (Ctrl+V o mantener apretado → Pegar) el bloque copiado desde{' '}
+            <strong>«🔒 Adultos / Exportar → Copiar paquete cifrado»</strong> en la app del niño:
+          </p>
+          <textarea
+            className="cl-input cl-mono"
+            rows={4}
+            value={pastedText}
+            onChange={(e) => setPastedText(e.target.value)}
+            placeholder="CLAVE-AURIKAT: ...\n-----BEGIN AURIKAT ENVELOPE V2-----..."
+            autoFocus
+          />
+          <div>
+            <button
+              type="button"
+              className="cl-btn cl-btn-primary"
+              onClick={() => void processEnvelopeRawText(pastedText)}
+            >
+              Descifrar e interpretar sesión pegada
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Mode A Passphrase Prompt if imported envelope is symmetric without embedded key */}
       {pendingEnvelopeMode === 'passphrase_aes_gcm' && (
         <form onSubmit={handleDecryptModeA} className="cl-card cl-no-print" style={{ borderColor: 'var(--cl-accent)' }}>
           <h3>Descifrar paquete .aurikat.txt (Modo A — Contraseña Familiar)</h3>
@@ -240,7 +352,7 @@ export const App: React.FC = () => {
         ))}
       </nav>
 
-      {/* TAB 1: OVERVIEW + VALIDITY GATE + RADAR + EVIDENCE TRACE */}
+      {/* TAB 1: OVERVIEW + VALIDITY GATE + RADAR + CLINICAL GUIDE + EVIDENCE TRACE */}
       {activeTab === 'overview' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {/* Session Validity Gate Banner (Canvas Dx Lesson) */}
@@ -262,18 +374,31 @@ export const App: React.FC = () => {
                   {Math.floor(report.ageMonths / 12)}a {report.ageMonths % 12}m (Sub-banda {report.subAgeBand.replace('_', '–')}a · Forma {report.formVariant})
                 </h2>
               </div>
-              <span
-                className="cl-badge"
-                data-tone={
-                  report.validityStatus === 'INDETERMINATE'
-                    ? 'warn'
-                    : report.validityStatus === 'VALID_WITH_CAVEATS'
-                      ? 'gold'
-                      : undefined
-                }
-              >
-                Compuerta de Validez: {report.validityStatus}
-              </span>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                {report.validityStatus === 'INDETERMINATE' && report.canShowPartialPreview ? (
+                  <button
+                    type="button"
+                    className="cl-btn cl-btn-primary"
+                    onClick={() => setShowPartialPreview((v) => !v)}
+                  >
+                    {showPartialPreview
+                      ? '🔍 Mostrando Vista Previa Parcial (1 juego)'
+                      : 'Desbloquear Vista Previa Parcial (1 juego)'}
+                  </button>
+                ) : null}
+                <span
+                  className="cl-badge"
+                  data-tone={
+                    report.validityStatus === 'INDETERMINATE'
+                      ? 'warn'
+                      : report.validityStatus === 'VALID_WITH_CAVEATS'
+                        ? 'gold'
+                        : undefined
+                  }
+                >
+                  Compuerta de Validez: {report.validityStatus}
+                </span>
+              </div>
             </div>
             <ul style={{ margin: 0, paddingLeft: 20, fontSize: '0.88rem', color: 'var(--cl-ink-muted)' }}>
               {report.validityReasons.map((r, i) => (
@@ -285,16 +410,22 @@ export const App: React.FC = () => {
                 </li>
               ))}
             </ul>
+            {report.validityStatus === 'INDETERMINATE' && report.canShowPartialPreview && showPartialPreview ? (
+              <div className="cl-banner" data-tone="gold" style={{ marginTop: 8 }}>
+                <strong>Modo Prueba / Sesión Parcial Activo:</strong> Se muestran los resultados de los minijuegos
+                completados hasta ahora para facilitar la revisión clínica de cada prototipo.
+              </div>
+            ) : null}
           </div>
 
           <div className="cl-grid-2">
             <div className="cl-card" style={{ alignItems: 'center' }}>
               <h3 style={{ alignSelf: 'flex-start' }}>Radar Dimensional (6 Ejes + Bandas ±IC)</h3>
-              <DomainRadarChart domains={report.domains} validityStatus={report.validityStatus} />
+              <DomainRadarChart domains={displayedDomains} validityStatus={displayedRadarValidity} />
             </div>
 
             <div className="cl-card">
-              <h3>Desglose NIH Toolbox DCCS y GeoPref Exploratorio</h3>
+              <h3>Desglose NIH Toolbox DCCS y Preferencia Socio-Perceptiva</h3>
               <div className="cl-grid-2">
                 <div className="cl-metric-box">
                   <span>DCCS Bicomponente (0–10)</span>
@@ -318,7 +449,7 @@ export const App: React.FC = () => {
                 <strong>GeoPref Táctil Exploratorio (Subtipo ASDGeo):</strong>{' '}
                 {report.geoprefExploratoryFlag.geometricRatio !== null
                   ? `${Math.round(report.geoprefExploratoryFlag.geometricRatio * 100)}% geométrico (${report.geoprefExploratoryFlag.totalInteractions} toques).`
-                  : 'Sin datos suficientes.'}{' '}
+                  : 'Sin datos de burbujas clásicas.'}{' '}
                 {report.geoprefExploratoryFlag.interpretationRule}
               </div>
 
@@ -333,6 +464,9 @@ export const App: React.FC = () => {
             </div>
           </div>
 
+          {/* NEW: Game 4A/4B Breakdowns + Actionable Clinical Interpretation Guide */}
+          <ClinicalInterpretationGuide report={report} />
+
           {/* Evidence Trace Panel (FDA CDS Jan 2026 Criterion 4 Transparency) */}
           <div className="cl-card">
             <h3>Trazabilidad Ensayo-por-Ensayo (Evidence Trace · Enfoque Neuroafirmativo)</h3>
@@ -346,7 +480,7 @@ export const App: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {report.domains.map((d) => (
+                {displayedDomains.map((d) => (
                   <tr key={d.domainId}>
                     <td><strong>{d.title}</strong></td>
                     <td className="cl-mono">

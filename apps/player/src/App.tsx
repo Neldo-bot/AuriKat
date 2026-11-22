@@ -32,8 +32,8 @@ import { ParentalExportGate } from './components/ParentalExportGate.js';
 import { SensoryCalmBar } from './components/SensoryCalmBar.js';
 import { CognitiveFlexibilityGame } from './games/CognitiveFlexibilityGame.js';
 import { EmotionToMGame } from './games/EmotionToMGame.js';
+import { Game4LabHub } from './games/Game4LabHub.js';
 import { JointAttentionGame } from './games/JointAttentionGame.js';
-import { SocialGeoMotorGame } from './games/SocialGeoMotorGame.js';
 
 type ActiveView = 'hub' | 'customise' | 'ema' | 'g1' | 'g2' | 'g3' | 'g4';
 
@@ -442,7 +442,11 @@ export const App: React.FC = () => {
               <button
                 type="button"
                 className="ak-game-tile"
-                data-done={completedGames.has('G4B_MOTOR')}
+                data-done={
+                  completedGames.has('G4_SENSORY_SOCIAL') ||
+                  completedGames.has('G4_DETAIL_NAVON') ||
+                  completedGames.has('G4B_MOTOR')
+                }
                 onClick={() => {
                   gentleSoundEngine.unlock();
                   gentleSoundEngine.playCue('tap_soft');
@@ -450,11 +454,11 @@ export const App: React.FC = () => {
                 }}
               >
                 <svg width="46" height="46" viewBox="0 0 48 48" aria-hidden="true">
-                  <path d="M8 34 Q24 10 40 34" fill="none" stroke="var(--ak-au-gold)" strokeWidth="4.5" strokeLinecap="round" />
-                  <circle cx="10" cy="33" r="6" fill="var(--ak-au-gold)" />
-                  <circle cx="38" cy="33" r="7" fill="var(--ak-accent)" />
+                  <circle cx="21" cy="21" r="11" fill="var(--ak-accent-soft)" stroke="var(--ak-accent)" strokeWidth="2.8" />
+                  <line x1="29" y1="29" x2="40" y2="40" stroke="var(--ak-au-gold)" strokeWidth="4" strokeLinecap="round" />
+                  <polygon points="21,14 23,19 28,19 24,22 25.5,27 21,24 16.5,27 18,22 14,19 19,19" fill="var(--ak-au-gold)" />
                 </svg>
-                <strong>4. Burbujas y Cometas</strong>
+                <strong>4. Día y Detective (Lab)</strong>
               </button>
             </div>
           </section>
@@ -498,12 +502,15 @@ export const App: React.FC = () => {
             onComplete={(t) => handleCompleteTrials('G3_TOM', t)}
           />
         ) : (
-          <SocialGeoMotorGame
+          <Game4LabHub
             creatureInputs={creatureInputs}
             pacingMode={pacingMode}
             sensorySettings={session.sensorySettingsFinal}
+            completedGames={completedGames}
+            onCompleteTrials={handleCompleteTrials}
+            onCompleteClassicGame4={handleCompleteGame4}
             onSamplesObserved={handleSamplesObserved}
-            onComplete={handleCompleteGame4}
+            onBackToHub={() => setView('hub')}
           />
         )}
       </main>
