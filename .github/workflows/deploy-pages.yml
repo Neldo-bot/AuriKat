@@ -1,0 +1,63 @@
+name: Build, Audit & Deploy AuriKat to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test
+      - run: npm run build
+      - name: Assemble dual-build staging directory (zero clinical bytes in /play/)
+        run: |
+          mkdir -p pages_dist/play pages_dist/clinico
+          cp -r apps/player/dist/* pages_dist/play/
+          cp -r apps/clinical/dist/* pages_dist/clinico/
+          cat <<'EOF' > pages_dist/index.html
+          <!doctype html>
+          <html lang="es">
+            <head>
+              <meta charset="UTF-8" />
+              <meta http-equiv="refresh" content="0; url=./play/" />
+              <title>AuriKat</title>
+            </head>
+            <body>
+              <p>Redirigiendo a <a href="./play/">AuriKat</a>...</p>
+            </body>
+          </html>
+          EOF
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages_dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build-and-audit
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
